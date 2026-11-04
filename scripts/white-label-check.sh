@@ -21,6 +21,7 @@ setup() {
   cp "$ROOT/clients/example-$c/company.env.example" "$dir/company.env"
   cp "$ROOT/clients/example-$c/deployment.env.example" "$dir/deployment.env"
   printf 'LIMS_VERSION="%s"\nLIMS_UI_VERSION="%s"\n' "$LIMS_VERSION" "$LIMS_UI_VERSION" > "$dir/versions.env"
+  sed -i.bak "s#^S3_IMAGE=.*#S3_IMAGE=\"${S3_IMAGE:-lims-test-s3:local}\"#" "$dir/deployment.env" && rm -f "$dir/deployment.env.bak"
   "$ROOT/scripts/provision.sh" --client-dir "$dir"
 }
 
@@ -35,6 +36,10 @@ check() {
   echo "ok: $c"
 }
 
+if [ -z "${S3_IMAGE:-}" ]; then
+  docker build -q -t lims-test-s3:local "$ROOT/compose/test-s3" >/dev/null
+  export LIMS_S3_ACCESS_KEY=S3RVER LIMS_S3_SECRET_KEY=S3RVER # the local server accepts only its own key
+fi
 setup bluepeak
 setup greenfield
 check bluepeak "BluePeak" "Greenfield"

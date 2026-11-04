@@ -41,6 +41,7 @@ load_client() {
   [[ "${CLIENT_SLUG:-}" =~ ^[a-z0-9][a-z0-9-]{0,40}$ ]] || die "CLIENT_SLUG must be lowercase letters, digits and hyphens"
   export COMPOSE_PROJECT_NAME="lims-$CLIENT_SLUG"
   export COMPOSE_FILE="$DEPLOY_ROOT/compose/docker-compose.yml"
+  [ -n "${S3_IMAGE:-}" ] || die "Set S3_IMAGE in $CLIENT_DIR/deployment.env (see DECISIONS.md)"
   BACKUP_DIR="${LIMS_BACKUP_DIR:-$CLIENT_DIR/backups}"
   export BACKUP_DIR
 }

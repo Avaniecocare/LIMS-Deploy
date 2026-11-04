@@ -23,8 +23,8 @@ if [ ! -f "$CLIENT_DIR/secrets.env" ]; then
 POSTGRES_OWNER_PASSWORD="$(random_secret)"
 POSTGRES_APP_PASSWORD="$(random_secret)"
 REDIS_PASSWORD="$(random_secret)"
-S3_ACCESS_KEY="$(random_secret 20)"
-S3_SECRET_KEY="$(random_secret)"
+S3_ACCESS_KEY="${LIMS_S3_ACCESS_KEY:-$(random_secret 20)}"
+S3_SECRET_KEY="${LIMS_S3_SECRET_KEY:-$(random_secret)}"
 SESSION_SECRET="$(random_secret 64)"
 SETUP_TOKEN="$(random_secret 32)"
 EOF
