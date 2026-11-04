@@ -1,0 +1,20 @@
+# One reverse proxy per server, in front of every company on it. Caddy obtains and renews TLS
+# certificates automatically. Sites are generated into sites/ by scripts/proxy-sync.sh.
+name: lims-proxy
+services:
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports: ['80:80', '443:443', '443:443/udp']
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ${PROXY_SITES_DIR:?}:/etc/caddy/sites:ro
+      - caddydata:/data
+      - caddyconfig:/config
+    networks: [lims-proxy]
+volumes:
+  caddydata:
+  caddyconfig:
+networks:
+  lims-proxy:
+    external: true

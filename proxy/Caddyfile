@@ -1,0 +1,13 @@
+{
+	# ACME account email and staging overrides can be set in sites/_global.caddy
+	import /etc/caddy/sites/_global.caddy*
+}
+
+(security) {
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		-Server
+	}
+}
+
+import /etc/caddy/sites/*.site

@@ -1,0 +1,44 @@
+name: CI
+on:
+  push:
+    branches: [main, 'build/**']
+  # pull_request (never pull_request_target) gives fork PRs no secrets.
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  gitleaks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITLEAKS_ENABLE_COMMENTS: false
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Shellcheck
+        run: shellcheck -x scripts/*.sh scripts/lib/*.sh compose/db-init.sh
+      - name: Only template and fictional examples under clients/
+        run: |
+          bad="$(git ls-files clients | grep -vE '^clients/(_template|example-[a-z]+)/' || true)"
+          [ -z "$bad" ] || { echo "$bad"; exit 1; }
+          git ls-files | grep -E '(^|/)(company|deployment|secrets|generated|versions)\.env$' && exit 1 || true
+      - name: Compose files parse
+        run: |
+          docker network create lims-proxy
+          POSTGRES_OWNER_PASSWORD=x POSTGRES_APP_PASSWORD=x REDIS_PASSWORD=x S3_ACCESS_KEY=x S3_SECRET_KEY=x LIMS_VERSION=x LIMS_UI_VERSION=x API_DOMAIN=a FILES_DOMAIN=f CLIENT_DIR="$PWD/clients/example-bluepeak" DEPLOY_ROOT="$PWD" \
+            docker compose -f compose/docker-compose.yml config --no-env-resolution -q || true
+  white-label:
+    # Runs once images exist; set repository variables LIMS_VERSION and LIMS_UI_VERSION.
+    if: github.event_name == 'push' && vars.LIMS_VERSION != ''
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: scripts/white-label-check.sh
+        env:
+          LIMS_VERSION: ${{ vars.LIMS_VERSION }}
+          LIMS_UI_VERSION: ${{ vars.LIMS_UI_VERSION }}
