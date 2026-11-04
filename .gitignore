@@ -1,0 +1,17 @@
+# Real company data must never enter this public repository.
+clients/*
+!clients/_template/
+!clients/_template/**
+!clients/example-*/
+!clients/example-*/**
+*.env
+!*.env.example
+.env
+.env.*
+!.env.example
+backups/
+secrets/
+*.dump
+*.sql.gz
+*.tar.gz
+.DS_Store
