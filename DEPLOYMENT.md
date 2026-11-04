@@ -27,7 +27,7 @@ Lives outside this repository, for example `/srv/lims-clients/acme`. Restrict ac
 | File | Written by | Contains |
 |---|---|---|
 | `company.env` | you | The company's details |
-| `deployment.env` | you | Domains and mail settings |
+| `deployment.env` | you | Domains, mail settings and the storage image (`S3_IMAGE`) |
 | `versions.env` | you, then `upgrade.sh` | Exact image versions |
 | `branding/` | you | Logo and favicon |
 | `secrets.env` | `provision.sh` | Generated passwords. Keep a copy in your secrets store |
@@ -67,6 +67,16 @@ To restore:
 3. Sign in and check a recent job and an issued report's PDF.
 
 A restored backup may have been taken on older images. If so, run `upgrade.sh` afterwards, or set `versions.env` to the versions in its manifest first.
+
+## Checking a new image or storage choice
+
+Run this on a machine with Docker before trusting a new version or `S3_IMAGE`:
+
+```sh
+LIMS_VERSION=0.1.0 LIMS_UI_VERSION=0.1.0 NEXT_LIMS_VERSION=0.2.0 S3_IMAGE=... LIMS_S3_ACCESS_KEY=... LIMS_S3_SECRET_KEY=... scripts/lifecycle-check.sh
+```
+
+It provisions two fictional companies, does real work through the images (first-run setup, sign-in, a PDF rendered by the worker and stored), then checks isolation, backup, restore, upgrade and rollback, and removes everything.
 
 ## Upgrades and rollback
 

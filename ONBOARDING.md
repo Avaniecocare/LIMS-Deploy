@@ -23,7 +23,7 @@ cp deployment.env.example /srv/lims-clients/$SLUG/deployment.env
 cp versions.env.example   /srv/lims-clients/$SLUG/versions.env
 ```
 
-Fill in those three files, and put the logo and favicon in `branding/`.
+Fill in those three files, and put the logo and favicon in `branding/`. Double-quote every value. `S3_IMAGE` must be the storage image your organisation has chosen; see [DECISIONS.md](DECISIONS.md).
 
 ## 3. Point DNS
 

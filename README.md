@@ -7,5 +7,8 @@ This repository is public. `clients/` holds only `_template/` and fictional exam
 - [DEPLOYMENT.md](DEPLOYMENT.md): how a server is set up and operated
 - [ONBOARDING.md](ONBOARDING.md): adding a new company
 - [DECISIONS.md](DECISIONS.md): choices behind this setup
+- [docs/guides/](docs/guides/README.md): administrator guide and a user guide for each role
+
+`scripts/lifecycle-check.sh` runs the whole operational lifecycle on two fictional companies, and `scripts/white-label-check.sh` confirms one image serves both.
 
 Git hooks: `git config core.hooksPath .githooks` (needs gitleaks).
