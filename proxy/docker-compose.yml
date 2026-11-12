@@ -12,6 +12,12 @@ services:
       - caddydata:/data
       - caddyconfig:/config
     networks: [lims-proxy]
+    mem_limit: ${CADDY_MEM_LIMIT:-128m}
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 volumes:
   caddydata:
   caddyconfig:

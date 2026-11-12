@@ -30,7 +30,9 @@ parse_client_dir() {
 require_file() { [ -f "$1" ] || die "Missing $1"; }
 
 load_client() {
-  for f in company.env deployment.env versions.env; do require_file "$CLIENT_DIR/$f"; done
+  # company.env is optional: new installs set the lab up in the app; older ones are imported from it once.
+  for f in deployment.env versions.env; do require_file "$CLIENT_DIR/$f"; done
+  mkdir -p "$CLIENT_DIR/branding"
   set -a
   # shellcheck disable=SC1091
   . "$CLIENT_DIR/deployment.env"
@@ -44,30 +46,38 @@ load_client() {
   [ -n "${S3_IMAGE:-}" ] || die "Set S3_IMAGE in $CLIENT_DIR/deployment.env (see DECISIONS.md)"
   BACKUP_DIR="${LIMS_BACKUP_DIR:-$CLIENT_DIR/backups}"
   export BACKUP_DIR
+  # Folders provisioned before the owner credentials moved to migrate.env: split them now, so
+  # compose finds migrate.env and generated.env stops carrying the owner password.
+  if [ -f "$CLIENT_DIR/secrets.env" ] && { [ ! -f "$CLIENT_DIR/migrate.env" ] || grep -q '^MIGRATION_DATABASE_URL=' "$CLIENT_DIR/generated.env" 2>/dev/null; }; then
+    write_generated_env
+  fi
 }
 
 compose() { docker compose --env-file "$CLIENT_DIR/secrets.env" --env-file "$CLIENT_DIR/versions.env" --env-file "$CLIENT_DIR/deployment.env" "$@"; }
 
 random_secret() { LC_ALL=C tr -dc 'A-Za-z0-9' < /dev/urandom | head -c "${1:-40}"; }
 
-# Everything the app needs that is not COMPANY_*, derived from deployment.env and secrets.env.
+# Everything the app needs, derived from deployment.env and secrets.env. The lab's own details are not here:
+# the administrator sets them in the app after the first sign-in.
+# generated.env goes to the api and worker, so it carries only the lims_app role. The owner
+# credentials go to migrate.env, which only the migrate service loads (see compose).
 write_generated_env() {
   local out="$CLIENT_DIR/generated.env"
   umask 077
   cat > "$out" <<EOF
+BRAND_NAME="${BRAND_NAME:-LIMS}"
 NODE_ENV="production"
 PORT="3000"
 TRUST_PROXY="true"
 COOKIE_SECURE="true"
 DATABASE_URL="postgresql://lims_app:${POSTGRES_APP_PASSWORD}@postgres:5432/lims"
-MIGRATION_DATABASE_URL="postgresql://lims_owner:${POSTGRES_OWNER_PASSWORD}@postgres:5432/lims"
 DATABASE_READ_URL="${DATABASE_READ_URL:-}"
 REDIS_URL="redis://:${REDIS_PASSWORD}@redis:6379/0"
 SESSION_SECRET="${SESSION_SECRET}"
 SETUP_TOKEN="${SETUP_TOKEN}"
 FRONTEND_ORIGIN="https://${APP_DOMAIN}"
 PUBLIC_API_URL="https://${API_DOMAIN}"
-S3_ENDPOINT="http://minio:9000"
+S3_ENDPOINT="http://lims-${CLIENT_SLUG}-storage:9000"
 S3_PUBLIC_ENDPOINT="https://${FILES_DOMAIN}"
 S3_BUCKET="lims"
 S3_ACCESS_KEY="${S3_ACCESS_KEY}"
@@ -78,9 +88,32 @@ SMTP_SECURE="${SMTP_SECURE}"
 SMTP_USER="${SMTP_USER:-}"
 SMTP_PASSWORD="${SMTP_PASSWORD:-}"
 SMTP_FROM="${SMTP_FROM}"
+SMTP_TRANSPORT="${SMTP_TRANSPORT:-smtp}"
 ERROR_TRACKING_DSN="${ERROR_TRACKING_DSN:-}"
+WHATSAPP_TOKEN="${WHATSAPP_TOKEN:-}"
+WHATSAPP_PHONE_NUMBER_ID="${WHATSAPP_PHONE_NUMBER_ID:-}"
+WHATSAPP_APP_SECRET="${WHATSAPP_APP_SECRET:-}"
+WHATSAPP_VERIFY_TOKEN="${WHATSAPP_VERIFY_TOKEN:-}"
+SESSION_MAX_HOURS="${SESSION_MAX_HOURS:-12}"
+PINCODE_LOOKUP_URL="${PINCODE_LOOKUP_URL-https://api.postalpincode.in/pincode/}"
 EOF
   chmod 600 "$out"
+  write_migrate_env
+}
+
+# Table-owner credentials, for the migrate service and owner-level one-off tasks only.
+write_migrate_env() {
+  local out="$CLIENT_DIR/migrate.env"
+  umask 077
+  printf 'MIGRATION_DATABASE_URL="postgresql://lims_owner:%s@postgres:5432/lims"\n' "$POSTGRES_OWNER_PASSWORD" > "$out"
+  chmod 600 "$out"
+}
+
+# Runs a one-off command in a throwaway migrate container, connected as the table owner.
+# The api and worker never hold these credentials.
+run_as_owner() {
+  # shellcheck disable=SC2016 # expanded inside the container, not here
+  compose run --rm -T migrate sh -c 'DATABASE_URL="$MIGRATION_DATABASE_URL" exec "$@"' sh "$@"
 }
 
 wait_healthy() {

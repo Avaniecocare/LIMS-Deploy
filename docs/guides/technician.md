@@ -6,7 +6,7 @@
 
 ## Doing a test
 
-1. **Start.** Your name is recorded as conducting the test.
+1. **Start test.** Your name is recorded as conducting the test.
 2. Read the office instructions and technical data.
 3. **Complete each stage** in order. Who and when are recorded.
 4. **Enter results.** Your entries save automatically as you go, so you can leave and come back.
@@ -16,7 +16,7 @@
 5. **Choose the instrument.** You are warned if calibration is overdue, and your lab may block its use.
 6. Add remarks, observations and notes. Suggestions appear from your result, or pick a template.
 7. **Attach images** with a print size: they print at that size on the report. Attach scanned worksheets too.
-8. **Submit.** You will be told if anything is missing.
+8. **Submit results.** You will be told if anything is missing.
 
 After submitting you can't change results unless they come back.
 
@@ -26,6 +26,6 @@ The reason shows at the top of the test and you get a notification. Correct it a
 
 ## Other things
 
-- **Hold:** stops the test, with a reason, for example no reagent. **Release** to carry on. If the whole job is held, you can't work on it until it is released.
-- **Unit conversion:** a small tool on the test screen.
+- **Put on hold:** stops the test, with a reason, for example no reagent. **Release hold** to carry on. If the whole job is held, you can't work on it until it is released.
+- **Unit converter:** a small tool on the test screen.
 - **Print test data:** a sheet of your stages, results and working.

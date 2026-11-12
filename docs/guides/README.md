@@ -21,7 +21,7 @@ Short guides for the people who use the system each day. Start with the one for 
 - **Signing in.** Use your email and password. A new account starts with a temporary password that you must change first. After repeated wrong passwords the account locks for 15 minutes; **Forgot password?** on the sign-in page sends a reset link. You are signed out after a period of inactivity.
 - **Search and scanning.** The box at the top finds customers, jobs, samples, reports and invoices by number. A barcode or QR scanner works from any screen: scan a sample label and its record opens.
 - **Tables.** Click a column heading to sort. Filters stay in the page address, so you can bookmark or share them, and **Save filter** keeps a set under a name.
-- **"This record was changed by someone else."** Another person saved first. Reload the page, check what changed, and make your edit again. Nothing has been overwritten.
+- **"This record was changed by someone else."** Another person saved first. The latest version loads by itself. Check what changed and make your edit again. Nothing has been overwritten.
 - **PDFs and Excel files** are prepared in the background and open in a new tab when ready.
 - **Notifications.** The bell shows work waiting for you. Choose which ones also come by email under **My account**.
-- **Dates and money** show as 05-Nov-2026 and ₹1,23,456.00.
+- **Dates and money** show as 05-Nov-2026 and 1,23,456.00.

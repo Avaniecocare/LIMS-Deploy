@@ -6,9 +6,10 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 WORK="$(mktemp -d)"
 export PROXY_SITES_DIR="$WORK/sites"
+export LIMS_SKIP_BACKUP_CRON=true # throwaway companies: no crontab entries
 cleanup() {
   for c in bluepeak greenfield; do
-    [ -f "$WORK/$c/secrets.env" ] && (cd "$WORK/$c" && COMPOSE_PROJECT_NAME="lims-$c" docker compose -f "$ROOT/compose/docker-compose.yml" --env-file secrets.env --env-file versions.env --env-file deployment.env down -v >/dev/null 2>&1 || true)
+    [ -f "$WORK/$c/secrets.env" ] && (cd "$WORK/$c" && COMPOSE_PROJECT_NAME="lims-$c" DEPLOY_ROOT="$ROOT" CLIENT_DIR="$WORK/$c" docker compose -f "$ROOT/compose/docker-compose.yml" --env-file secrets.env --env-file versions.env --env-file deployment.env down -v >/dev/null 2>&1 || true)
   done
   rm -rf "$WORK"
 }

@@ -6,11 +6,11 @@ You see job and sample codes rather than customer names. That is deliberate, to 
 
 **Planning → Unplanned** lists tests requested but not yet planned.
 
-1. Select one sample, or several from the same job to plan them as a group.
+1. Select the rows for one sample, or for several from the same job to plan them as a group, and choose **Plan**.
 2. Choose the grade or specification. For **dual grade**, choose a second: results are checked against both.
 3. Use the suggestions from the grade, or from a test or chemical group, then add or remove tests.
 4. For chemical tests choose **Spectro** or **Wet**. Add office instructions and technical data for the technician.
-5. **Plan.** Due dates come from each test's turnaround time and the working-day calendar, shorter for urgent jobs.
+5. **Create plan.** Due dates come from each test's turnaround time and the working-day calendar, shorter for urgent jobs.
 
 The limits in force are stored with each test, so later master changes don't affect work in progress.
 

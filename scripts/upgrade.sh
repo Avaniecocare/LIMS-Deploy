@@ -17,8 +17,18 @@ done
 OLD_LIMS="$LIMS_VERSION"; OLD_UI="$LIMS_UI_VERSION"
 NEW_LIMS="${NEW_LIMS:-$OLD_LIMS}"; NEW_UI="${NEW_UI:-$OLD_UI}"
 
+# Pull first: a mistyped or missing tag should fail before the backup and the downtime.
+for img in "ghcr.io/avaniecocare/lims:$NEW_LIMS" "ghcr.io/avaniecocare/lims-ui:$NEW_UI"; do
+  docker image inspect "$img" >/dev/null 2>&1 && continue
+  log "Pulling $img"
+  docker pull -q "$img" >/dev/null || die "Cannot pull $img. Check the version and the registry login. Nothing was changed."
+done
+
 log "Backing up before upgrade"
-backup_path="$("$DEPLOY_ROOT/scripts/backup.sh" --client-dir "$CLIENT_DIR" | tail -1)"
+# --keep-plaintext: an automatic rollback must work even when the decryption key is off the server.
+# --local-only: no off-site copy or ping for this one; the nightly backup does those.
+backup_path="$("$DEPLOY_ROOT/scripts/backup.sh" --client-dir "$CLIENT_DIR" --keep-plaintext --local-only | tail -1)" || die "The pre-upgrade backup failed. Nothing was changed."
+[ -d "$backup_path" ] || die "The pre-upgrade backup did not produce a folder ($backup_path). Nothing was changed."
 
 # History lets rollback.sh find the previous versions and the backup taken just before.
 printf '%s lims=%s ui=%s backup=%s\n' "$(date -u +%FT%TZ)" "$OLD_LIMS" "$OLD_UI" "$backup_path" >> "$CLIENT_DIR/versions.history"

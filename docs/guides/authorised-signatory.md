@@ -4,7 +4,7 @@
 
 **Approvals → Sign** lists reports that have passed review. Check the preview, then:
 
-- **Approve:** re-enter your password. This is your electronic signature. Your signature image, name, designation, the time and a hash of the report are recorded. The content, company details and terms are frozen at this moment.
+- **Approve and sign:** re-enter your password. This is your electronic signature. Your signature image, name, designation, the time and a hash of the report are recorded. The content, company details and terms are frozen at this moment.
 - **Reject:** give a reason, and choose to correct the report or send tests back.
 
 You can't sign a report you reviewed.

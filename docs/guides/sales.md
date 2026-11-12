@@ -12,7 +12,7 @@
 
 1. **New quotation.** Choose the customer. Add a line for each sample and test.
 2. **Rates are looked up for you:** the customer's rate if there is one, otherwise the standard rate. To use a different rate you need permission and must give a reason. It shows on the line as an override.
-3. **Save.** The system works out subtotal, GST and the rounded total. Customers in your state get CGST and SGST; others get IGST.
+3. **Save draft.** The system works out subtotal, GST and the rounded total. Customers in your state get CGST and SGST; others get IGST.
 4. **Send.** Enter the address and an optional message. The PDF is produced and emailed, and the sent history shows delivery.
 
 | Status | Means | What you can do |

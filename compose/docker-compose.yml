@@ -1,10 +1,28 @@
 # One stack per company, run under its own Compose project name, so nothing is shared:
 # own PostgreSQL, own Redis, own object store, own secrets, own named volumes.
+#
+# Naming on the shared `lims-proxy` network: Compose registers every service under its generic
+# name (`minio`, `api`, `ui`) on each network it joins, so on the shared network those names
+# resolve to ANY company's container. Never address a service by those names across networks.
+# The app reaches storage through `lims-<slug>-storage`, an alias that exists only on this
+# company's internal network, and the proxy uses the unique container names (lims-<slug>-api-1).
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 x-app: &app
   image: ghcr.io/avaniecocare/lims:${LIMS_VERSION:?set in versions.env}
   restart: unless-stopped
+  logging: *logging
+  # The app gets the lims_app role only. Owner credentials live in migrate.env (migrate service).
+  # The lab's details live in the app's database (Admin > Lab profile). company.env is only for installs
+  # configured before that: if present on the first start of this version it is imported once.
   env_file:
-    - ${CLIENT_DIR}/company.env
+    - path: ${CLIENT_DIR}/company.env
+      required: false
     - ${CLIENT_DIR}/generated.env
   volumes:
     - ${CLIENT_DIR}/branding:/branding:ro
@@ -12,8 +30,10 @@ x-app: &app
 
 services:
   postgres:
+    mem_limit: ${POSTGRES_MEM_LIMIT:-512m}
     image: postgres:18-alpine
     restart: unless-stopped
+    logging: *logging
     environment:
       POSTGRES_USER: lims_owner
       POSTGRES_PASSWORD: ${POSTGRES_OWNER_PASSWORD:?}
@@ -26,8 +46,10 @@ services:
     healthcheck: { test: ['CMD-SHELL', 'pg_isready -U lims_owner -d lims'], interval: 5s, timeout: 3s, retries: 30 }
 
   redis:
+    mem_limit: ${REDIS_MEM_LIMIT:-128m}
     image: redis:8-alpine
     restart: unless-stopped
+    logging: *logging
     command: ['redis-server', '--requirepass', '${REDIS_PASSWORD:?}', '--appendonly', 'yes', '--maxmemory-policy', 'noeviction']
     volumes: ['redisdata:/data']
     networks: [internal]
@@ -36,47 +58,83 @@ services:
 
   minio:
     # An S3-compatible server. Each deployment names its image in deployment.env; see DECISIONS.md.
+    mem_limit: ${S3_MEM_LIMIT:-256m}
     image: ${S3_IMAGE:?set S3_IMAGE in deployment.env}
     restart: unless-stopped
+    logging: *logging
     command: ${S3_COMMAND:-server /data}
     environment:
       MINIO_ROOT_USER: ${S3_ACCESS_KEY:?}
       MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY:?}
-    volumes: ['miniodata:/data']
-    networks: [internal, proxy]
+    volumes:
+      - miniodata:/data
+      - ${DEPLOY_ROOT}/compose/storage-healthcheck.sh:/lims-storage-healthcheck.sh:ro
+    networks:
+      internal:
+        aliases: ['lims-${CLIENT_SLUG:?set CLIENT_SLUG in deployment.env}-storage']
+      # Only so the proxy can serve signed links on FILES_DOMAIN, by container name.
+      proxy: {}
+    # Any HTTP answer on :9000 counts. Needs /bin/sh in the image; set S3_HEALTHCHECK_CMD otherwise.
+    healthcheck:
+      test: ['CMD-SHELL', '${S3_HEALTHCHECK_CMD:-sh /lims-storage-healthcheck.sh}']
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
 
   # Migrations run as the table owner; the app itself connects as a role that cannot alter tables.
+  # Only this service loads migrate.env, which holds MIGRATION_DATABASE_URL (lims_owner).
   migrate:
     <<: *app
     restart: 'no'
-    command: ['sh', '-c', 'DATABASE_URL="$$MIGRATION_DATABASE_URL" npx prisma migrate deploy']
+    env_file:
+      - path: ${CLIENT_DIR}/company.env
+        required: false
+      - ${CLIENT_DIR}/generated.env
+      - ${CLIENT_DIR}/migrate.env
+    command: ['sh', '-c', 'DATABASE_URL="$$MIGRATION_DATABASE_URL" exec npx --no-install prisma migrate deploy']
     depends_on:
       postgres: { condition: service_healthy }
 
   api:
     <<: *app
+    mem_limit: ${API_MEM_LIMIT:-768m}
     command: ['node', 'dist/main.js', 'api']
     networks: [internal, proxy]
     depends_on:
       migrate: { condition: service_completed_successfully }
       redis: { condition: service_healthy }
-      minio: { condition: service_started }
+      minio: { condition: service_healthy }
 
   worker:
     <<: *app
+    mem_limit: ${WORKER_MEM_LIMIT:-1g}
+    # Chromium renders PDFs here; Docker's default 64 MB /dev/shm is too small for it.
+    shm_size: 256m
     command: ['node', 'dist/main.js', 'worker']
-    healthcheck: { disable: true }
+    # The worker serves no HTTP, so the image's /health/live check does not apply. This one proves
+    # the process's environment can reach Redis, where its job queues live.
+    healthcheck:
+      test: ['CMD', 'node', '-e', "const R=require('ioredis');const r=new R(process.env.REDIS_URL,{lazyConnect:true,maxRetriesPerRequest:1,connectTimeout:3000});r.connect().then(()=>r.ping()).then(p=>process.exit(p==='PONG'?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
     depends_on:
       migrate: { condition: service_completed_successfully }
       redis: { condition: service_healthy }
-      minio: { condition: service_started }
+      minio: { condition: service_healthy }
 
   ui:
+    mem_limit: ${UI_MEM_LIMIT:-64m}
     image: ghcr.io/avaniecocare/lims-ui:${LIMS_UI_VERSION:?set in versions.env}
     restart: unless-stopped
+    logging: *logging
     environment:
       API_URL: https://${API_DOMAIN:?}
       STORAGE_ORIGIN: https://${FILES_DOMAIN:?}
+      # The name of the app when installed on a phone's home screen.
+      APP_NAME: ${BRAND_NAME:-Laboratory}
     networks: [proxy]
 
 volumes:

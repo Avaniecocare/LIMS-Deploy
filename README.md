@@ -9,6 +9,8 @@ This repository is public. `clients/` holds only `_template/` and fictional exam
 - [DECISIONS.md](DECISIONS.md): choices behind this setup
 - [docs/guides/](docs/guides/README.md): administrator guide and a user guide for each role
 
+Provisioning installs a nightly backup of each company's database, files and settings, which can be encrypted (age or gpg) and copied off-site; see [DEPLOYMENT.md](DEPLOYMENT.md#backups).
+
 `scripts/lifecycle-check.sh` runs the whole operational lifecycle on two fictional companies, and `scripts/white-label-check.sh` confirms one image serves both.
 
 Git hooks: `git config core.hooksPath .githooks` (needs gitleaks).

@@ -9,6 +9,7 @@ WORK="${LIFECYCLE_WORK_DIR:-$(mktemp -d)}"
 mkdir -p "$WORK"
 KEEP=false; [ "${1:-}" = "--keep" ] && KEEP=true
 export PROXY_SITES_DIR="$WORK/sites"
+export LIMS_SKIP_BACKUP_CRON=true # throwaway companies: no crontab entries
 NEXT="${NEXT_LIMS_VERSION:-$LIMS_VERSION}"
 say() { printf '\n=== %s\n' "$*"; }
 fail() { printf 'FAIL: %s\n' "$*" >&2; exit 1; }
@@ -84,6 +85,20 @@ for s in postgres redis minio; do
 done
 [ "$(docker inspect --format '{{.Config.Image}}' lims-bluepeak-api-1)" = "$(docker inspect --format '{{.Config.Image}}' lims-greenfield-api-1)" ] || fail "different images"
 echo "ok: separate databases, caches and storage; one image"
+
+say "Only the migrate service holds the owner credentials"
+for svc in api worker; do
+  if docker exec "lims-bluepeak-$svc-1" printenv MIGRATION_DATABASE_URL >/dev/null 2>&1; then fail "$svc holds the owner credentials"; fi
+done
+grep -q '^MIGRATION_DATABASE_URL=' "$WORK/bluepeak/generated.env" && fail "generated.env carries the owner credentials"
+echo "ok"
+
+say "Storage is addressed by a per-company name"
+grep -q '^S3_ENDPOINT="http://lims-bluepeak-storage:9000"' "$WORK/bluepeak/generated.env" || fail "S3_ENDPOINT is not per-company"
+ips_a="$(api bluepeak "require('dns').promises.lookup('lims-bluepeak-storage',{all:true}).then(a=>console.log(a.length))")"
+[ "$ips_a" = "1" ] || fail "lims-bluepeak-storage resolves to $ips_a addresses"
+if api greenfield "require('dns').promises.lookup('lims-bluepeak-storage').then(()=>process.exit(0),()=>process.exit(1))" 2>/dev/null; then fail "greenfield can resolve bluepeak's storage"; fi
+echo "ok"
 
 say "App role cannot touch the audit log's protection"
 owner="$(grep POSTGRES_APP_PASSWORD "$WORK/bluepeak/secrets.env" | cut -d= -f2 | tr -d '"')"

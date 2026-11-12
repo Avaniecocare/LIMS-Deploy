@@ -2,9 +2,9 @@
 
 Your access is read-only.
 
-## Dashboard
+## Dashboard and Analytics
 
-Choose a date range. **Every number is a link** to the records behind it, and matches the report it links to.
+**Dashboard** shows your work list and the main figures. **Analytics** has the full sections below, with charts and a table view of each. Choose a date range. **Each number links** to the records behind it, and matches that list. A few show as plain numbers if your role can't open the list.
 
 - **Operations:** samples received, status, tests pending by stage, TAT crossed, urgent, on hold, TAT compliance
 - **Quality:** reports awaiting review and approval, rejection rate and reasons, revisions issued

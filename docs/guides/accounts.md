@@ -22,11 +22,11 @@ An **issued invoice can't be edited.** Correct it by cancelling it, if nothing h
 
 ## Due invoices
 
-**Due Invoices** lists everything unpaid: balance, days overdue and ageing (Not Due, 0–30, 31–60, 61–90, 90+). Overdue is worked out from the due date. A payment due today is not yet overdue. Filter by bucket or customer, see totals per customer, and from here you can:
+**Due Invoices** lists everything unpaid: balance, days overdue and ageing (Not Due, 0–30, 31–60, 61–90, 90+). Overdue is worked out from the due date. A payment due today is not yet overdue. Filter by ageing or customer, see totals per customer, and from here you can:
 
 - record a payment
 - send a **reminder**, which is logged
-- produce a **statement of account** or an **Excel export**
+- produce a **statement of account** or an **Excel** file
 
 Automatic reminders are off by default. An Admin can turn them on and set which days after the due date they go.
 
