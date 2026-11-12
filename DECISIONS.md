@@ -11,3 +11,6 @@
 - **The table-owner database URL lives in `migrate.env`, loaded only by the `migrate` container.** The api and worker hold only `lims_app`.
 - **No generic service names across the shared proxy network.** The app reaches storage through a per-company alias; the proxy uses unique container names.
 - **Secrets are generated on the server** and never leave the company's folder unless you copy them to your secrets store.
+
+## GST e-invoicing
+- **`EINVOICE_*` are deployment settings, written into `generated.env`** like the WhatsApp and assistant settings. They hold the lab's e-invoice API credentials, so they belong in the company's `deployment.env` (outside this repository), never in git. The module stays off in the app until an Admin turns it on.
