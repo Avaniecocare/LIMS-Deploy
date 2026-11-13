@@ -15,3 +15,14 @@ secrets/
 *.sql.gz
 *.tar.gz
 .DS_Store
+
+# Terraform: state and real values never enter this repository (the example files do).
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+terraform.tfvars
+*.auto.tfvars
+backend.hcl
+!*.example

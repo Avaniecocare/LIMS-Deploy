@@ -14,3 +14,11 @@
 
 ## GST e-invoicing
 - **`EINVOICE_*` are deployment settings, written into `generated.env`** like the WhatsApp and assistant settings. They hold the lab's e-invoice API credentials, so they belong in the company's `deployment.env` (outside this repository), never in git. The module stays off in the app until an Admin turns it on.
+
+## Production on AWS (Terraform)
+- **One root module for the shared setup, one `modules/lab` per company from a `labs` map.** Adding a company is an entry and an apply; its number (1-15, never reused) fixes its Redis database, host ports and routing priority, so companies never collide on shared servers, cache or load balancer.
+- **Per-company database roles** (`lims_<slug>_owner`, `lims_<slug>_app`): one RDS instance serves every company and role names are instance-wide.
+- **Certificates at the top level, not in the company module,** because the HTTPS listener needs the first company's certificate before any company's routing rules can attach to it (otherwise a dependency cycle).
+- **App servers in public subnets, reachable only from the load balancer,** instead of private subnets with NAT gateways (US$35-45 a month each). Database and cache stay private with no internet route.
+- **Generated secrets live in the encrypted, versioned state bucket; integration secrets are put in SSM by hand** so they never enter state. Buckets carry `prevent_destroy`; removing a company is a written procedure, not a plan side effect.
+- **`app_servers_enabled` defaults to false** until the app changes in the runbook exist; everything else can be built and checked first. `terraform test` plans the whole setup against mocked AWS, which caught validation records keyed by apply-time values before any real plan.

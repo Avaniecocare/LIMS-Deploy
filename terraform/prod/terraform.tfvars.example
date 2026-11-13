@@ -1,0 +1,27 @@
+# Copy to terraform.tfvars (git-ignored: it names real companies and people) and fill in.
+
+deploy_repo_url = "https://github.com/<github-owner>/LIMS-Deploy.git"
+deploy_version  = "v1.0.0"
+github_org      = "<github-owner>"
+
+oncall_emails = ["oncall@example.com"]
+budget_emails = ["accounts@example.com"]
+
+# Leave false until the app changes in the runbook are released.
+app_servers_enabled = false
+
+# Count first, block after a week of reading the sampled requests.
+waf_block = false
+
+# Irreversible after the cooling-off days. Only once the retention period is agreed.
+enable_backup_vault_lock = false
+
+labs = {
+  # First company. number: 1-15, unique, never reused.
+  examplelab = {
+    number      = 1
+    domain      = "lims.example.com"
+    dns_zone_id = null # or the Route 53 hosted zone id, e.g. "Z0123456789ABCDEFGHIJ"
+    image_tag   = "1.0.0"
+  }
+}

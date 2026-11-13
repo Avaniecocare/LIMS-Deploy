@@ -1,0 +1,39 @@
+#!/bin/bash
+# Builds an app server from nothing: Docker, the CloudWatch agent, the deploy scripts at the pinned release, then
+# every lab listed in /lims/prod/labs. A replaced server comes back the same.
+set -euo pipefail
+exec > >(tee -a /var/log/lims-start.log) 2>&1
+
+REGION="${region}"
+dnf install -y docker git amazon-cloudwatch-agent
+systemctl enable --now docker
+
+mkdir -p /usr/local/lib/docker/cli-plugins
+curl -fsSL -o /usr/local/lib/docker/cli-plugins/docker-compose \
+  "https://github.com/docker/compose/releases/download/${compose_version}/docker-compose-linux-aarch64"
+chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
+
+# Memory and disk, per server group (the alarms watch the group, so a replaced server keeps its alarms).
+cat > /opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json <<'JSON'
+{
+  "metrics": {
+    "namespace": "CWAgent",
+    "append_dimensions": { "AutoScalingGroupName": "$${aws:AutoScalingGroupName}" },
+    "aggregation_dimensions": [["AutoScalingGroupName"]],
+    "metrics_collected": {
+      "mem": { "measurement": ["mem_used_percent"] },
+      "disk": { "measurement": ["used_percent"], "resources": ["/"] }
+    }
+  }
+}
+JSON
+/opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a fetch-config -m ec2 -s \
+  -c file:/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json
+
+# A new server has no /opt/lims-deploy yet; the release tag pins what it runs.
+DEPLOY_VERSION=$(aws ssm get-parameter --region "$REGION" --name /lims/prod/deploy-version --query Parameter.Value --output text)
+git clone --depth 1 --branch "$DEPLOY_VERSION" "${deploy_repo_url}" /opt/lims-deploy
+
+# Starts each lab's API, worker and UI from its settings in /lims/prod/<slug>/, with logs to CloudWatch.
+# Provided by LIMS-Deploy once the runbook's app changes 1 and 8 are released.
+/opt/lims-deploy/scripts/aws/start-labs.sh --region "$REGION" --ssm-path /lims/prod
