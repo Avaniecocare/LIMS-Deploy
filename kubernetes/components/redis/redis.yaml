@@ -1,0 +1,56 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata: { name: redis, labels: { app: redis } }
+spec:
+  serviceName: redis
+  replicas: 1
+  selector: { matchLabels: { app: redis } }
+  template:
+    metadata: { labels: { app: redis } }
+    spec:
+      serviceAccountName: lims-plain
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      terminationGracePeriodSeconds: 30
+      securityContext: { runAsNonRoot: true, runAsUser: 999, runAsGroup: 999, fsGroup: 999, seccompProfile: { type: RuntimeDefault } }
+      containers:
+        - name: redis
+          image: redis:8-alpine
+          # From the environment to a file, so the password is not in the process list.
+          command: ['sh', '-c', 'umask 077; printf "requirepass %s\nappendonly yes\nmaxmemory-policy noeviction\nmaxmemory 200mb\n" "$REDIS_PASSWORD" > /tmp/redis.conf; exec redis-server /tmp/redis.conf --dir /data']
+          env: [{ name: REDIS_PASSWORD, valueFrom: { secretKeyRef: { name: lims-secrets, key: REDIS_PASSWORD } } }]
+          ports: [{ name: redis, containerPort: 6379 }]
+          securityContext: { allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: { drop: [ALL] } }
+          resources: { requests: { cpu: 25m, memory: 64Mi }, limits: { memory: 256Mi } }
+          readinessProbe: { exec: { command: ['sh', '-c', 'REDISCLI_AUTH="$REDIS_PASSWORD" redis-cli ping | grep -q PONG'] }, periodSeconds: 5, timeoutSeconds: 3 }
+          livenessProbe: { tcpSocket: { port: redis }, periodSeconds: 20 }
+          volumeMounts: [{ name: data, mountPath: /data }, { name: tmp, mountPath: /tmp }]
+      volumes: [{ name: tmp, emptyDir: { medium: Memory, sizeLimit: 4Mi } }]
+  volumeClaimTemplates:
+    - metadata: { name: data }
+      spec: { accessModes: [ReadWriteOnce], resources: { requests: { storage: 2Gi } } }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: redis }
+spec: { clusterIP: None, selector: { app: redis }, ports: [{ port: 6379, targetPort: redis }] }
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: { name: redis }
+spec:
+  podSelector: { matchLabels: { app: redis } }
+  policyTypes: [Ingress]
+  ingress:
+    - from: [{ podSelector: { matchExpressions: [{ key: app, operator: In, values: [api, worker] }] } }]
+      ports: [{ port: 6379 }]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: { name: app-to-redis }
+spec:
+  podSelector: { matchExpressions: [{ key: app, operator: In, values: [api, worker] }] }
+  policyTypes: [Egress]
+  egress:
+    - to: [{ podSelector: { matchLabels: { app: redis } } }]
+      ports: [{ port: 6379 }]

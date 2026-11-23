@@ -1,0 +1,26 @@
+# A fictional company. Copy this folder outside the repository, which is public, for a real one.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: lims-example
+resources: [../../base, namespace.yaml]
+components: [../../components/redis, ../../components/aws]
+images:
+  - { name: lims, newName: 000000000000.dkr.ecr.ap-south-1.amazonaws.com/lims, newTag: 1.0.0 }
+  - { name: lims-ui, newName: 000000000000.dkr.ecr.ap-south-1.amazonaws.com/lims-ui, newTag: 1.0.0 }
+# A changed value gets a new name, so pods restart with it.
+configMapGenerator:
+  - name: lims-config
+    envs: [company.properties]
+replacements:
+  - source: { kind: ConfigMap, name: lims-config, fieldPath: data.APP_DOMAIN }
+    targets: [{ select: { kind: Ingress, name: lims }, fieldPaths: [spec.rules.0.host] }]
+  - source: { kind: ConfigMap, name: lims-config, fieldPath: data.API_DOMAIN }
+    targets: [{ select: { kind: Ingress, name: lims }, fieldPaths: [spec.rules.1.host] }]
+  - source: { kind: ConfigMap, name: lims-config, fieldPath: data.VPC_PUBLIC_CIDR }
+    targets: [{ select: { kind: NetworkPolicy, name: from-load-balancer }, fieldPaths: [spec.ingress.0.from.0.ipBlock.cidr] }]
+  - source: { kind: ConfigMap, name: lims-config, fieldPath: data.VPC_DATA_CIDR }
+    targets: [{ select: { kind: NetworkPolicy, name: to-database }, fieldPaths: [spec.egress.0.to.0.ipBlock.cidr] }]
+  - source: { kind: ConfigMap, name: lims-config, fieldPath: data.COMPANY_SECRET }
+    targets: [{ select: { kind: ExternalSecret, name: lims-secrets }, fieldPaths: [spec.dataFrom.0.extract.key] }]
+  - source: { kind: ConfigMap, name: lims-config, fieldPath: data.COMPANY_MIGRATE_SECRET }
+    targets: [{ select: { kind: ExternalSecret, name: lims-migrate }, fieldPaths: [spec.dataFrom.0.extract.key] }]

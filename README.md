@@ -5,6 +5,8 @@ Everything needed to run the LIMS for a customer: production Compose files, a re
 This repository is public. `clients/` holds only `_template/` and fictional examples. Real env files, branding, version pins, secrets, customer data and backups stay outside it, and every script takes their location through `--client-dir`.
 
 - [docker-compose/](docker-compose/README.md): a trial or small installation, started with one command
+- [kubernetes/](kubernetes/README.md): production on Kubernetes, a namespace per company
+- [monitoring/](monitoring/README.md): metrics and alerts
 - [DEPLOYMENT.md](DEPLOYMENT.md): how a server for several companies is set up and operated
 - [ONBOARDING.md](ONBOARDING.md): adding a new company
 - [DECISIONS.md](DECISIONS.md): choices behind this setup

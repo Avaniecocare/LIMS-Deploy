@@ -1,0 +1,4 @@
+# This company's own cache: sessions, queues, limits. One per namespace, so no company holds a password to another's.
+apiVersion: kustomize.config.k8s.io/v1alpha1
+kind: Component
+resources: [redis.yaml]

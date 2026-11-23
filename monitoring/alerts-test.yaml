@@ -1,0 +1,37 @@
+# promtool test rules alerts-test.yaml: the alerts that matter most fire when they should, and not otherwise.
+rule_files: [alerts.yaml]
+evaluation_interval: 1m
+tests:
+  - interval: 1m
+    input_series:
+      - { series: 'up{job="lims",app="api",namespace="a"}', values: '1x5 0x20' }
+      - { series: 'up{job="lims",app="worker",namespace="a"}', values: '1x30' }
+      - { series: 'lims_queue_oldest_waiting_seconds{namespace="a",queue="documents"}', values: '0x5 700x20' }
+      - { series: 'lims_read_only{namespace="a"}', values: '0x30' }
+      - { series: 'lims_licence_days_left{namespace="a",kind="trial"}', values: '30x10 7x20' }
+      - { series: 'lims_einvoices_unregistered{namespace="a",reason="uncertain"}', values: '0x30' }
+      - { series: 'lims_http_request_duration_seconds_count{namespace="a",status="200",route="/x",method="GET"}', values: '0+100x30' }
+      - { series: 'lims_http_request_duration_seconds_count{namespace="a",status="500",route="/x",method="GET"}', values: '0x10 0+10x20' }
+    alert_rule_test:
+      - { eval_time: 4m, alertname: LimsApiDown, exp_alerts: [] }
+      - eval_time: 10m
+        alertname: LimsApiDown
+        exp_alerts:
+          - exp_labels: { severity: critical, namespace: a }
+            exp_annotations:
+              summary: The API is down in a
+              meaning: Nobody can work.
+              first: 'kubectl -n a get pods; kubectl -n a logs deploy/api --tail=50. If pods are ready, check the database and Redis.'
+      - { eval_time: 20m, alertname: LimsWorkerDown, exp_alerts: [] }
+      - { eval_time: 20m, alertname: LimsReadOnly, exp_alerts: [] }
+      - { eval_time: 20m, alertname: LimsEinvoiceUncertain, exp_alerts: [] }
+      - { eval_time: 8m, alertname: LimsLicenceEnding, exp_alerts: [] }
+    promql_expr_test:
+      - { expr: 'count(ALERTS{alertname="LimsQueueStuck",alertstate="firing",queue="documents"})', eval_time: 15m, exp_samples: [{ labels: '{}', value: 1 }] }
+      - { expr: 'count(ALERTS{alertname="LimsLicenceEnding",alertstate="firing",kind="trial"})', eval_time: 15m, exp_samples: [{ labels: '{}', value: 1 }] }
+      - { expr: 'count(ALERTS{alertname="LimsErrors",alertstate="firing"})', eval_time: 25m, exp_samples: [{ labels: '{}', value: 1 }] }
+      - { expr: 'count(ALERTS{alertname="LimsErrors"})', eval_time: 9m, exp_samples: [] }
+  - name: no licence needed, so no number and no alarm
+    interval: 1m
+    input_series: [{ series: 'lims_read_only{namespace="b"}', values: '0x30' }]
+    alert_rule_test: [{ eval_time: 20m, alertname: LimsLicenceEnding, exp_alerts: [] }]

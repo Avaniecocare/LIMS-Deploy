@@ -1,0 +1,102 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: api, labels: { app: api, lims.example/database: 'true' } }
+spec:
+  revisionHistoryLimit: 5
+  selector: { matchLabels: { app: api } }
+  strategy: { type: RollingUpdate, rollingUpdate: { maxUnavailable: 0, maxSurge: 1 } }
+  template:
+    metadata: { labels: { app: api, lims.example/ops: 'true' } }
+    spec:
+      serviceAccountName: lims
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      terminationGracePeriodSeconds: 60
+      securityContext: { runAsNonRoot: true, runAsUser: 1001, runAsGroup: 1001, fsGroup: 1001, seccompProfile: { type: RuntimeDefault } }
+      topologySpreadConstraints:
+        - { maxSkew: 1, topologyKey: topology.kubernetes.io/zone, whenUnsatisfiable: ScheduleAnyway, labelSelector: { matchLabels: { app: api } } }
+      containers:
+        - name: api
+          image: lims
+          args: ['node', 'dist/main.js', 'api']
+          ports: [{ name: http, containerPort: 3000 }, { name: ops, containerPort: 9464 }]
+          envFrom: [{ configMapRef: { name: lims-config } }, { secretRef: { name: lims-secrets } }]
+          env: [{ name: HOME, value: /tmp }]
+          securityContext: { allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: { drop: [ALL] } }
+          resources: { requests: { cpu: 200m, memory: 384Mi }, limits: { memory: 768Mi } }
+          startupProbe: { httpGet: { path: /health/live, port: http }, periodSeconds: 3, failureThreshold: 40 }
+          livenessProbe: { httpGet: { path: /health/live, port: http }, periodSeconds: 15, timeoutSeconds: 5, failureThreshold: 4 }
+          readinessProbe: { httpGet: { path: /health/ready, port: http }, periodSeconds: 10, timeoutSeconds: 5, failureThreshold: 3 }
+          # The load balancer needs a moment to stop sending requests here.
+          lifecycle: { preStop: { sleep: { seconds: 15 } } }
+          volumeMounts: [{ name: tmp, mountPath: /tmp }]
+      volumes: [{ name: tmp, emptyDir: { sizeLimit: 512Mi } }]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: worker, labels: { app: worker, lims.example/database: 'true' } }
+spec:
+  revisionHistoryLimit: 5
+  selector: { matchLabels: { app: worker } }
+  strategy: { type: RollingUpdate, rollingUpdate: { maxUnavailable: 0, maxSurge: 1 } }
+  template:
+    metadata: { labels: { app: worker, lims.example/ops: 'true' } }
+    spec:
+      serviceAccountName: lims
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      # It finishes the job it is on, for up to 60 seconds.
+      terminationGracePeriodSeconds: 75
+      securityContext: { runAsNonRoot: true, runAsUser: 1001, runAsGroup: 1001, fsGroup: 1001, seccompProfile: { type: RuntimeDefault } }
+      containers:
+        - name: worker
+          image: lims
+          args: ['node', 'dist/main.js', 'worker']
+          ports: [{ name: ops, containerPort: 9464 }]
+          envFrom: [{ configMapRef: { name: lims-config } }, { secretRef: { name: lims-secrets } }]
+          env: [{ name: HOME, value: /tmp }]
+          securityContext: { allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: { drop: [ALL] } }
+          resources: { requests: { cpu: 200m, memory: 512Mi }, limits: { memory: 1Gi } }
+          startupProbe: { httpGet: { path: /live, port: ops }, periodSeconds: 3, failureThreshold: 40 }
+          livenessProbe: { httpGet: { path: /live, port: ops }, periodSeconds: 20, timeoutSeconds: 5, failureThreshold: 4 }
+          readinessProbe: { httpGet: { path: /ready, port: ops }, periodSeconds: 15, timeoutSeconds: 6, failureThreshold: 3 }
+          volumeMounts:
+            - { name: tmp, mountPath: /tmp }
+            # Chromium renders PDFs here; the default 64 MB is too small for it.
+            - { name: shm, mountPath: /dev/shm }
+      volumes:
+        - { name: tmp, emptyDir: { sizeLimit: 1Gi } }
+        - { name: shm, emptyDir: { medium: Memory, sizeLimit: 256Mi } }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: ui, labels: { app: ui } }
+spec:
+  replicas: 2
+  revisionHistoryLimit: 5
+  selector: { matchLabels: { app: ui } }
+  strategy: { type: RollingUpdate, rollingUpdate: { maxUnavailable: 0, maxSurge: 1 } }
+  template:
+    metadata: { labels: { app: ui } }
+    spec:
+      serviceAccountName: lims-plain
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      terminationGracePeriodSeconds: 40
+      securityContext: { runAsNonRoot: true, runAsUser: 101, runAsGroup: 101, fsGroup: 101, seccompProfile: { type: RuntimeDefault } }
+      containers:
+        - name: ui
+          image: lims-ui
+          ports: [{ name: http, containerPort: 8080 }]
+          env:
+            - { name: API_URL, valueFrom: { configMapKeyRef: { name: lims-config, key: PUBLIC_API_URL } } }
+            - { name: APP_URL, valueFrom: { configMapKeyRef: { name: lims-config, key: FRONTEND_ORIGIN } } }
+            - { name: STORAGE_ORIGIN, valueFrom: { configMapKeyRef: { name: lims-config, key: STORAGE_ORIGIN } } }
+            - { name: APP_NAME, valueFrom: { configMapKeyRef: { name: lims-config, key: BRAND_NAME } } }
+          securityContext: { allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: { drop: [ALL] } }
+          resources: { requests: { cpu: 25m, memory: 32Mi }, limits: { memory: 96Mi } }
+          livenessProbe: { httpGet: { path: /healthz, port: http }, periodSeconds: 20 }
+          readinessProbe: { httpGet: { path: /healthz, port: http }, periodSeconds: 10 }
+          lifecycle: { preStop: { sleep: { seconds: 15 } } }
+          volumeMounts: [{ name: tmp, mountPath: /tmp }]
+      volumes: [{ name: tmp, emptyDir: { sizeLimit: 128Mi } }]

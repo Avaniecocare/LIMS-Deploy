@@ -27,3 +27,9 @@
 - **`docker-compose/` is one company on one machine at one address, over plain HTTP on localhost.** Caddy routes the API, signed file links and the screens under one origin, so no DNS or certificates are needed to look at the product. `compose/` with `scripts/` stays the way to run several companies on a server.
 - **Secrets are made by the first start, in a volume,** as files the containers read. `.env` holds no passwords except an optional SMTP one, and the setup token is never in a log.
 - **`scripts/trial-check.mjs` uses it as a customer would:** install, work, files, restart, backup, restore, the trial ending, and a renewal.
+
+## Kubernetes
+- **Kustomize, not Helm.** One set of manifests and a short overlay per company; nothing to install, and what is applied can be read as it is.
+- **A cache per namespace,** instead of one shared ElastiCache with one password, where a company could read another's sessions. One pod with a disk: a short wait if its machine fails, for a fraction of the cost.
+- **`deploy.sh` instead of an operator:** migrations as a Job first, then the new version, then back to the previous one if it does not become ready.
+- **`check.sh` proves it on a real cluster:** installation, real use with a PDF, who can reach what, an upgrade, and an upgrade that does not work.

@@ -1,0 +1,119 @@
+# Prometheus rules. Every alert says what is wrong, what it means for the lab, and what to do first. With the Prometheus
+# Operator, wrap `groups` in a PrometheusRule; see README.md.
+groups:
+  - name: lims-availability
+    rules:
+      - alert: LimsApiDown
+        expr: sum by (namespace) (up{job="lims", app="api"}) == 0 or absent_over_time(up{job="lims", app="api"}[5m])
+        for: 2m
+        labels: { severity: critical }
+        annotations:
+          summary: 'The API is down in {{ $labels.namespace }}'
+          meaning: Nobody can work.
+          first: 'kubectl -n {{ $labels.namespace }} get pods; kubectl -n {{ $labels.namespace }} logs deploy/api --tail=50. If pods are ready, check the database and Redis.'
+      - alert: LimsWorkerDown
+        expr: sum by (namespace) (up{job="lims", app="worker"}) == 0 or absent_over_time(up{job="lims", app="worker"}[5m])
+        for: 5m
+        labels: { severity: critical }
+        annotations:
+          summary: 'The worker is down in {{ $labels.namespace }}'
+          meaning: Screens work, but PDFs, emails, WhatsApp and reminders wait. Nothing is lost.
+          first: 'kubectl -n {{ $labels.namespace }} logs deploy/worker --tail=50'
+      - alert: LimsRestarting
+        expr: increase(kube_pod_container_status_restarts_total{container=~"api|worker|ui|redis"}[15m]) > 2
+        labels: { severity: warning }
+        annotations:
+          summary: '{{ $labels.container }} keeps restarting in {{ $labels.namespace }}'
+          meaning: Usually out of memory, or a dependency that comes and goes.
+          first: 'kubectl -n {{ $labels.namespace }} describe pod {{ $labels.pod }}: look for OOMKilled'
+  - name: lims-requests
+    rules:
+      - alert: LimsErrors
+        expr: |
+          sum by (namespace) (rate(lims_http_request_duration_seconds_count{status=~"5.."}[5m]))
+            / sum by (namespace) (rate(lims_http_request_duration_seconds_count[5m])) > 0.02
+          and sum by (namespace) (increase(lims_http_request_duration_seconds_count{status=~"5.."}[5m])) > 5
+        for: 5m
+        labels: { severity: critical }
+        annotations:
+          summary: 'Over 2% of requests fail in {{ $labels.namespace }}'
+          meaning: People see "Something went wrong".
+          first: 'Find the route: topk(5, sum by (route) (rate(lims_http_request_duration_seconds_count{namespace="{{ $labels.namespace }}",status=~"5.."}[5m])))'
+      - alert: LimsSlow
+        # The help assistant streams its answers, so its time is not a page's time.
+        expr: histogram_quantile(0.95, sum by (namespace, le) (rate(lims_http_request_duration_seconds_bucket{route!~".*/help/.*"}[10m]))) > 2
+        for: 15m
+        labels: { severity: warning }
+        annotations:
+          summary: 'Pages are slow in {{ $labels.namespace }}: 5% take over 2 seconds'
+          meaning: The database is usually the cause.
+          first: Check the database's CPU and connections, then the slowest route.
+  - name: lims-background
+    rules:
+      - alert: LimsQueueStuck
+        expr: max by (namespace, queue) (lims_queue_oldest_waiting_seconds) > 600
+        for: 5m
+        labels: { severity: critical }
+        annotations:
+          summary: 'The {{ $labels.queue }} queue has not moved for 10 minutes in {{ $labels.namespace }}'
+          meaning: 'PDFs or messages are waiting.'
+          first: Check the worker's log, then Redis.
+      - alert: LimsTaskOverdue
+        expr: time() - max by (namespace, task) (lims_scheduled_task_last_success_timestamp_seconds{task="email-sweep"}) > 900
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: 'Scheduled work has stopped in {{ $labels.namespace }}'
+          meaning: Reminders and due-date checks may be missed.
+          first: Check the worker's log for the task's error.
+      - alert: LimsEmailsFailed
+        expr: max by (namespace) (lims_emails_failed) > 0
+        for: 15m
+        labels: { severity: warning }
+        annotations:
+          summary: '{{ $value }} emails were given up on today in {{ $labels.namespace }}'
+          meaning: Customers may be waiting for a report or an invoice.
+          first: Check the mail server's settings and the address. Send the document again from its page.
+      - alert: LimsDocumentsFailed
+        expr: max by (namespace) (lims_documents_failed) > 3
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: '{{ $value }} PDFs or exports failed today in {{ $labels.namespace }}'
+          meaning: People were told to try again.
+          first: Check the worker's log, its memory, and storage.
+      - alert: LimsEinvoiceUncertain
+        expr: max by (namespace) (lims_einvoices_unregistered{reason="uncertain"}) > 0
+        for: 15m
+        labels: { severity: warning }
+        annotations:
+          summary: '{{ $value }} invoices may or may not be registered at the GST portal ({{ $labels.namespace }})'
+          meaning: They cannot be cancelled or emailed until this is settled.
+          first: Open each invoice and register it again. The portal returns the IRN it already has.
+  - name: lims-help
+    rules:
+      - alert: LimsHelpProviderFailing
+        expr: sum by (namespace, provider, model) (increase(lims_help_provider_errors_total[15m])) > 5
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: 'The help assistant''s {{ $labels.model }} is failing in {{ $labels.namespace }}'
+          meaning: Help search still works. Answers come from the fallback, if one is set.
+          first: Check the provider's status page and the key.
+  - name: lims-licence
+    rules:
+      - alert: LimsLicenceEnding
+        expr: min by (namespace, kind) (lims_licence_days_left) <= 14
+        labels: { severity: warning }
+        annotations:
+          summary: 'The {{ $labels.kind }} licence in {{ $labels.namespace }} ends in {{ $value }} days'
+          meaning: Nothing is deleted, but nothing can be saved after it ends.
+          first: Issue a new licence for the installation shown in Admin, Licence.
+      - alert: LimsReadOnly
+        expr: max by (namespace) (lims_read_only) == 1
+        for: 5m
+        labels: { severity: critical }
+        annotations:
+          summary: '{{ $labels.namespace }} is read-only: its licence has ended or is missing'
+          meaning: Nobody can save anything.
+          first: Issue a new licence.

@@ -1,0 +1,23 @@
+# What is particular to EKS: secrets from AWS Secrets Manager, the load balancer, and the database's address range.
+apiVersion: kustomize.config.k8s.io/v1alpha1
+kind: Component
+resources: [external-secret.yaml, ingress.yaml, network-policy.yaml]
+patches:
+  - target: { kind: StatefulSet, name: redis }
+    patch: |
+      - { op: add, path: /spec/volumeClaimTemplates/0/spec/storageClassName, value: gp3-encrypted }
+  # Amazon's database certificates are signed by its own authority.
+  - target: { kind: Deployment, labelSelector: lims.example/database=true }
+    patch: |
+      - { op: add, path: /spec/template/spec/volumes/-, value: { name: rds-ca, configMap: { name: rds-ca } } }
+      - { op: add, path: /spec/template/spec/containers/0/volumeMounts/-, value: { name: rds-ca, mountPath: /etc/rds-ca, readOnly: true } }
+  - target: { kind: Job, name: migrate }
+    patch: |
+      - { op: add, path: /spec/template/spec/volumes/-, value: { name: rds-ca, configMap: { name: rds-ca } } }
+      - { op: add, path: /spec/template/spec/containers/0/volumeMounts/-, value: { name: rds-ca, mountPath: /etc/rds-ca, readOnly: true } }
+  - target: { kind: Service, name: api }
+    patch: |
+      - { op: add, path: /metadata/annotations, value: { alb.ingress.kubernetes.io/healthcheck-path: /health/ready } }
+  - target: { kind: Service, name: ui }
+    patch: |
+      - { op: add, path: /metadata/annotations, value: { alb.ingress.kubernetes.io/healthcheck-path: /healthz } }

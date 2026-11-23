@@ -1,0 +1,41 @@
+# For check.sh on a throwaway cluster only: a database and a store inside the cluster, and no AWS.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: lims-local
+resources: [../../base, namespace.yaml, stand-ins.yaml]
+components: [../../components/redis]
+images:
+  - { name: lims, newName: ghcr.io/avaniecocare/lims, newTag: k8s-test }
+  - { name: lims-ui, newName: ghcr.io/avaniecocare/lims-ui, newTag: k8s-test }
+configMapGenerator:
+  - name: lims-config
+    literals:
+      - NODE_ENV=production
+      - PORT=3000
+      - OPS_PORT=9464
+      - BRAND_NAME=Local check
+      - FRONTEND_ORIGIN=http://ui
+      - PUBLIC_API_URL=http://api
+      - COOKIE_SECURE=false
+      - TRUST_PROXY=1
+      - S3_ENDPOINT=http://storage:9000
+      - S3_BUCKET=lims-files
+      - S3_FORCE_PATH_STYLE=true
+      - STORAGE_ORIGIN=http://storage:9000
+      - SMTP_FROM=lims@example.com
+      - SMTP_TRANSPORT=json
+      - HELP_INDEX_URL=http://ui/help/help-index.json
+patches:
+  # One machine: smaller, and one of each.
+  - target: { kind: HorizontalPodAutoscaler }
+    patch: |
+      - { op: replace, path: /spec/minReplicas, value: 1 }
+  - target: { kind: Deployment, name: ui }
+    patch: |
+      - { op: replace, path: /spec/replicas, value: 1 }
+  - target: { kind: Deployment }
+    patch: |
+      - { op: add, path: /spec/template/spec/containers/0/imagePullPolicy, value: Never }
+  - target: { kind: Job }
+    patch: |
+      - { op: add, path: /spec/template/spec/containers/0/imagePullPolicy, value: Never }

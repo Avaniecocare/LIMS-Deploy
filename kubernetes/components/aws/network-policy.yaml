@@ -1,0 +1,31 @@
+# The load balancer and the database live in the VPC. The overlay sets its address range.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: { name: from-load-balancer }
+spec:
+  podSelector: { matchExpressions: [{ key: app, operator: In, values: [api, ui] }] }
+  policyTypes: [Ingress]
+  ingress:
+    - from: [{ ipBlock: { cidr: VPC_PUBLIC_CIDR } }]
+      ports: [{ port: 3000 }, { port: 8080 }]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: { name: to-database }
+spec:
+  podSelector: { matchExpressions: [{ key: app, operator: In, values: [api, worker, migrate] }] }
+  policyTypes: [Egress]
+  egress:
+    - to: [{ ipBlock: { cidr: VPC_DATA_CIDR } }]
+      ports: [{ port: 5432 }]
+---
+# EKS Pod Identity hands out credentials at this one address on the node.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: { name: to-pod-identity }
+spec:
+  podSelector: { matchExpressions: [{ key: app, operator: In, values: [api, worker] }] }
+  policyTypes: [Egress]
+  egress:
+    - to: [{ ipBlock: { cidr: 169.254.170.23/32 } }]
+      ports: [{ port: 80 }]

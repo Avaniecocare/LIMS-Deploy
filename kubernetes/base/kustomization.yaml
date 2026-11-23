@@ -1,0 +1,14 @@
+# One company. Never applied by itself: an overlay gives it a namespace, its settings and its image versions.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - serviceaccount.yaml
+  - migrate-job.yaml
+  - deployment.yaml
+  - service.yaml
+  - hpa.yaml
+  - pdb.yaml
+  - network-policy.yaml
+  - resource-quota.yaml
+labels:
+  - pairs: { app.kubernetes.io/part-of: lims }

@@ -1,0 +1,29 @@
+# Run by deploy.sh before the new version starts, as the table owner. Only this Job is given the owner's password.
+apiVersion: batch/v1
+kind: Job
+metadata: { name: migrate, labels: { app: migrate } }
+spec:
+  backoffLimit: 0
+  activeDeadlineSeconds: 900
+  ttlSecondsAfterFinished: 86400
+  template:
+    metadata: { labels: { app: migrate } }
+    spec:
+      restartPolicy: Never
+      serviceAccountName: lims-plain
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      securityContext: { runAsNonRoot: true, runAsUser: 1001, runAsGroup: 1001, seccompProfile: { type: RuntimeDefault } }
+      containers:
+        - name: migrate
+          image: lims
+          args: ['node_modules/.bin/prisma', 'migrate', 'deploy']
+          env:
+            - { name: HOME, value: /tmp }
+            - { name: DATABASE_URL, valueFrom: { secretKeyRef: { name: lims-migrate, key: MIGRATION_DATABASE_URL } } }
+            # The bundle AWS signs its database certificates with; harmless elsewhere.
+            - { name: NODE_EXTRA_CA_CERTS, valueFrom: { configMapKeyRef: { name: lims-config, key: NODE_EXTRA_CA_CERTS, optional: true } } }
+          securityContext: { allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: { drop: [ALL] } }
+          resources: { requests: { cpu: 100m, memory: 256Mi }, limits: { memory: 768Mi } }
+          volumeMounts: [{ name: tmp, mountPath: /tmp }]
+      volumes: [{ name: tmp, emptyDir: {} }]

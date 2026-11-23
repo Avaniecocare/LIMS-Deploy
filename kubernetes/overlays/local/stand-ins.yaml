@@ -1,0 +1,90 @@
+# Stand-ins for RDS and S3, on a throwaway cluster. Data goes with the pod.
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: postgres, labels: { stand-in: 'true' } }
+spec:
+  selector: { matchLabels: { stand-in: postgres } }
+  template:
+    metadata: { labels: { stand-in: postgres } }
+    spec:
+      automountServiceAccountToken: false
+      securityContext: { runAsNonRoot: true, runAsUser: 70, runAsGroup: 70, fsGroup: 70, seccompProfile: { type: RuntimeDefault } }
+      containers:
+        - name: postgres
+          image: postgres:18-alpine
+          env:
+            - { name: POSTGRES_USER, value: lims_owner }
+            - { name: POSTGRES_DB, value: lims }
+            - { name: POSTGRES_PASSWORD, valueFrom: { secretKeyRef: { name: stand-in, key: owner } } }
+            - { name: LIMS_APP_PASSWORD, valueFrom: { secretKeyRef: { name: stand-in, key: app } } }
+          securityContext: { allowPrivilegeEscalation: false, capabilities: { drop: [ALL] } }
+          resources: { requests: { memory: 64Mi }, limits: { memory: 384Mi } }
+          readinessProbe: { exec: { command: [pg_isready, -U, lims_owner, -d, lims, -h, 127.0.0.1] }, periodSeconds: 3 }
+          volumeMounts: [{ name: data, mountPath: /var/lib/postgresql }, { name: init, mountPath: /docker-entrypoint-initdb.d }]
+      volumes: [{ name: data, emptyDir: {} }, { name: init, configMap: { name: stand-in-init } }]
+---
+apiVersion: v1
+kind: Service
+metadata: { name: postgres }
+spec: { selector: { stand-in: postgres }, ports: [{ port: 5432 }] }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: storage, labels: { stand-in: 'true' } }
+spec:
+  selector: { matchLabels: { stand-in: storage } }
+  template:
+    metadata: { labels: { stand-in: storage } }
+    spec:
+      automountServiceAccountToken: false
+      securityContext: { runAsNonRoot: true, runAsUser: 1000, runAsGroup: 1000, fsGroup: 1000, seccompProfile: { type: RuntimeDefault } }
+      containers:
+        - name: storage
+          image: versity/versitygw:v1.11.0
+          command: ['sh', '-c', 'mkdir -p /data/objects /data/meta; exec versitygw --port :9000 posix --sidecar /data/meta /data/objects']
+          env:
+            - { name: ROOT_ACCESS_KEY, valueFrom: { secretKeyRef: { name: lims-secrets, key: S3_ACCESS_KEY } } }
+            - { name: ROOT_SECRET_KEY, valueFrom: { secretKeyRef: { name: lims-secrets, key: S3_SECRET_KEY } } }
+          securityContext: { allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: { drop: [ALL] } }
+          resources: { requests: { memory: 32Mi }, limits: { memory: 128Mi } }
+          readinessProbe: { tcpSocket: { port: 9000 }, periodSeconds: 3 }
+          volumeMounts: [{ name: data, mountPath: /data }]
+      volumes: [{ name: data, emptyDir: {} }]
+---
+apiVersion: v1
+kind: Service
+metadata: { name: storage }
+spec: { selector: { stand-in: storage }, ports: [{ port: 9000 }] }
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: { name: stand-ins }
+spec:
+  podSelector: { matchExpressions: [{ key: stand-in, operator: Exists }] }
+  policyTypes: [Ingress]
+  ingress: [{ from: [{ podSelector: { matchExpressions: [{ key: app, operator: In, values: [api, worker, migrate, customer] }] } }], ports: [{ port: 5432 }, { port: 9000 }] }]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: { name: to-stand-ins }
+spec:
+  podSelector: { matchExpressions: [{ key: app, operator: In, values: [api, worker, migrate, customer] }] }
+  policyTypes: [Egress]
+  egress: [{ to: [{ podSelector: { matchExpressions: [{ key: stand-in, operator: Exists }] } }], ports: [{ port: 5432 }, { port: 9000 }] }]
+---
+# Plays the load balancer and the person in check.sh.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: { name: customer }
+spec:
+  podSelector: { matchExpressions: [{ key: app, operator: In, values: [api, ui] }] }
+  policyTypes: [Ingress]
+  ingress: [{ from: [{ podSelector: { matchLabels: { app: customer } } }], ports: [{ port: 3000 }, { port: 8080 }] }]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: { name: customer-out }
+spec:
+  podSelector: { matchLabels: { app: customer } }
+  policyTypes: [Egress]
+  egress: [{ to: [{ podSelector: { matchExpressions: [{ key: app, operator: In, values: [api, ui] }] } }], ports: [{ port: 3000 }, { port: 8080 }] }]
