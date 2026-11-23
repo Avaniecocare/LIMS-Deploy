@@ -16,8 +16,14 @@ mock_provider "aws" {
   mock_resource "aws_iam_role" {
     defaults = { arn = "arn:aws:iam::123456789012:role/mock" }
   }
-  mock_resource "aws_iam_instance_profile" {
-    defaults = { arn = "arn:aws:iam::123456789012:instance-profile/mock" }
+  mock_resource "aws_eks_cluster" {
+    defaults = { arn = "arn:aws:eks:ap-south-1:123456789012:cluster/lims-prod", vpc_config = [{ cluster_security_group_id = "sg-0123456789abcdef0", vpc_id = "vpc-0123456789abcdef0" }] }
+  }
+  mock_resource "aws_kms_key" {
+    defaults = { arn = "arn:aws:kms:ap-south-1:123456789012:key/00000000-0000-0000-0000-000000000000", key_id = "00000000-0000-0000-0000-000000000000" }
+  }
+  mock_resource "aws_secretsmanager_secret" {
+    defaults = { arn = "arn:aws:secretsmanager:ap-south-1:123456789012:secret:mock" }
   }
   mock_resource "aws_iam_openid_connect_provider" {
     defaults = { arn = "arn:aws:iam::123456789012:oidc-provider/token.actions.githubusercontent.com" }
@@ -84,15 +90,14 @@ mock_provider "aws" {
 }
 
 variables {
-  deploy_repo_url     = "https://github.com/example/LIMS-Deploy.git"
-  deploy_version      = "v1.0.0"
-  github_org          = "example"
-  oncall_emails       = ["oncall@example.com"]
-  budget_emails       = ["accounts@example.com"]
-  app_servers_enabled = true
+  github_org              = "example"
+  oncall_emails           = ["oncall@example.com"]
+  budget_emails           = ["accounts@example.com"]
+  cluster_admin_role_arns = ["arn:aws:iam::123456789012:role/admin"]
+  admin_cidrs             = ["203.0.113.0/24"]
   labs = {
-    alpha = { number = 1, domain = "lims.alpha.example", dns_zone_id = "Z0000000000000000ALPH", image_tag = "1.0.0" }
-    beta  = { number = 2, domain = "lims.beta.example", dns_zone_id = null, image_tag = "1.0.0" }
+    alpha = { number = 1, domain = "lims.alpha.example", dns_zone_id = "Z0000000000000000ALPH" }
+    beta  = { number = 2, domain = "lims.beta.example", dns_zone_id = null }
   }
 }
 
@@ -104,36 +109,40 @@ run "plans_two_companies" {
     error_message = "The database must be Multi-AZ, encrypted, protected and keep 35 days of backups."
   }
   assert {
-    condition     = aws_elasticache_replication_group.main.automatic_failover_enabled && aws_elasticache_replication_group.main.transit_encryption_enabled
-    error_message = "The cache must fail over automatically and encrypt traffic."
+    condition     = aws_eks_cluster.main.encryption_config[0].resources == toset(["secrets"]) && aws_eks_cluster.main.deletion_protection && aws_eks_cluster.main.access_config[0].authentication_mode == "API"
+    error_message = "The cluster must encrypt secrets with our key, be protected, and know people by IAM role only."
   }
   assert {
-    condition     = one([for p in aws_elasticache_parameter_group.cache.parameter : p.value if p.name == "maxmemory-policy"]) == "noeviction"
-    error_message = "The job queue needs noeviction."
+    condition     = jsondecode(aws_eks_addon.network.configuration_values).enableNetworkPolicy == "true"
+    error_message = "Without this, the network policies that keep companies apart are ignored."
   }
   assert {
-    condition     = aws_autoscaling_group.app.min_size == 2 && length(aws_subnet.public) == 2 && aws_subnet.public[0].availability_zone != aws_subnet.public[1].availability_zone
-    error_message = "Two servers across two AZs."
+    condition     = aws_launch_template.node.metadata_options[0].http_tokens == "required" && aws_launch_template.node.metadata_options[0].http_put_response_hop_limit == 1
+    error_message = "Pods must not reach the node's own credentials."
   }
   assert {
-    condition     = aws_launch_template.app.metadata_options[0].http_tokens == "required"
-    error_message = "IMDSv2 must be required."
+    condition     = aws_eks_node_group.main.scaling_config[0].min_size >= 2 && aws_subnet.nodes[0].availability_zone != aws_subnet.nodes[1].availability_zone && coalesce(aws_subnet.nodes[0].map_public_ip_on_launch, false) == false
+    error_message = "Two nodes across two AZs, without public addresses."
+  }
+  assert {
+    condition     = output.network.VPC_PUBLIC_CIDR == "10.20.0.0/23" && output.network.VPC_DATA_CIDR == "10.20.10.0/23" && aws_subnet.public[1].cidr_block == "10.20.1.0/24" && aws_subnet.private[1].cidr_block == "10.20.11.0/24"
+    error_message = "The network policies' ranges must cover exactly the load balancer's and the database's subnets."
   }
   assert {
     condition     = aws_lb_listener.https[0].ssl_policy == "ELBSecurityPolicy-TLS13-1-2-2021-06"
     error_message = "TLS 1.2+ policy on the listener."
   }
   assert {
-    condition     = aws_ssm_parameter.labs.value == "alpha:1,beta:2"
-    error_message = "Servers read every company and its number."
-  }
-  assert {
     condition     = length(aws_route53_record.cert_validation) == 2
     error_message = "Only the Route 53 company gets validation records (its two names)."
   }
   assert {
-    condition     = module.lab["alpha"].summary.redis_db == 1 && module.lab["beta"].summary.api_port == 3102
-    error_message = "Each company gets its own Redis database and ports."
+    condition     = module.lab["alpha"].summary.namespace == "lims-alpha" && module.lab["alpha"].summary.COMPANY_SECRET == "lims/prod/alpha/app" && module.lab["beta"].summary.S3_BUCKET != module.lab["alpha"].summary.S3_BUCKET
+    error_message = "Each company gets its own namespace, secrets and bucket."
+  }
+  assert {
+    condition     = length(aws_iam_role.ci_push) == 2 && aws_iam_role.ci_push["lims"].name != aws_iam_role.ci_push["lims-ui"].name && output.ci_subjects["lims-ui"] == "repo:example/LIMS-UI:ref:refs/tags/v*"
+    error_message = "Each repository pushes its own image, from release tags."
   }
   assert {
     condition     = module.lab["beta"].summary.db_owner == "lims_beta_owner"
@@ -141,14 +150,22 @@ run "plans_two_companies" {
   }
 }
 
-run "no_servers_until_enabled" {
+run "the_kubernetes_api_is_never_open_to_everyone" {
   command = plan
   variables {
-    app_servers_enabled = false
+    admin_cidrs = ["0.0.0.0/0"]
+  }
+  expect_failures = [var.admin_cidrs]
+}
+
+run "closed_from_outside_by_default" {
+  command = plan
+  variables {
+    admin_cidrs = []
   }
   assert {
-    condition     = aws_autoscaling_group.app.desired_capacity == 0
-    error_message = "No servers before the app changes are released."
+    condition     = !aws_eks_cluster.main.vpc_config[0].endpoint_public_access
+    error_message = "With no networks named, only from inside."
   }
 }
 
@@ -156,8 +173,8 @@ run "rejects_a_reused_number" {
   command = plan
   variables {
     labs = {
-      alpha = { number = 1, domain = "lims.alpha.example", image_tag = "1.0.0" }
-      gamma = { number = 1, domain = "lims.gamma.example", image_tag = "1.0.0" }
+      alpha = { number = 1, domain = "lims.alpha.example" }
+      gamma = { number = 1, domain = "lims.gamma.example" }
     }
   }
   expect_failures = [var.labs]

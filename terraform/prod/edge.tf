@@ -1,5 +1,5 @@
 # Step 7: the load balancer (TLS, routing by host name), its access logs and the web firewall. Certificates,
-# target groups and routing rules for each company are in the lab module.
+# target groups and routing rules for each company are in the lab module; pods join the target groups by themselves.
 
 locals {
   # The listener's default certificate: the company with the lowest number. The others are added beside it.

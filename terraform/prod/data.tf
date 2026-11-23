@@ -1,5 +1,5 @@
-# Step 3: PostgreSQL on RDS (Multi-AZ) and Valkey on ElastiCache (primary + replica). Per-lab buckets are in the lab
-# module; per-lab databases and roles are created by the app's role-setup command (runbook, Step 8).
+# Step 3: PostgreSQL on RDS (Multi-AZ). Per-company buckets are in the lab module; per-company databases and roles are
+# made by kubernetes/create-database.sh. The cache runs in each company's namespace.
 
 locals {
   pg_major = split(".", var.rds_engine_version)[0]
@@ -90,45 +90,3 @@ resource "aws_db_instance" "main" {
   depends_on = [aws_cloudwatch_log_group.rds]
 }
 
-# ---------------------------------------------------------------- ElastiCache
-resource "aws_elasticache_subnet_group" "main" {
-  name       = "lims-prod"
-  subnet_ids = aws_subnet.private[*].id
-}
-
-# The job queue (BullMQ) loses jobs under any eviction policy.
-resource "aws_elasticache_parameter_group" "cache" {
-  name   = "lims-${var.cache_parameter_family}"
-  family = var.cache_parameter_family
-  parameter {
-    name  = "maxmemory-policy"
-    value = "noeviction"
-  }
-}
-
-resource "random_password" "cache_auth" {
-  length  = 64
-  special = false
-}
-
-resource "aws_elasticache_replication_group" "main" {
-  replication_group_id       = "lims-cache"
-  description                = "LIMS sessions, rate limits and job queues"
-  engine                     = var.cache_engine
-  engine_version             = var.cache_engine_version
-  node_type                  = var.cache_node_type
-  num_cache_clusters         = 2
-  automatic_failover_enabled = true
-  multi_az_enabled           = true
-  port                       = 6379
-  subnet_group_name          = aws_elasticache_subnet_group.main.name
-  security_group_ids         = [aws_security_group.cache.id]
-  parameter_group_name       = aws_elasticache_parameter_group.cache.name
-  at_rest_encryption_enabled = true
-  transit_encryption_enabled = true
-  auth_token                 = random_password.cache_auth.result
-  maintenance_window         = "sun:01:30-sun:02:30"
-  snapshot_retention_limit   = 1
-  snapshot_window            = "19:30-20:30"
-  tags                       = { Lab = "shared" }
-}

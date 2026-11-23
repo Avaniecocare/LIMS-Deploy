@@ -30,21 +30,19 @@ variable "vpc_cidr" {
 variable "labs" {
   description = <<-EOT
     One entry per company. The key is its short name (slug: lower-case letters, digits and hyphens, at most 20).
-      number      1-15, unique and never reused: its Redis database, host ports 8100+n / 3100+n and listener priority
+      number      1-99, unique and never reused: its routing priority
       domain      the app's address; the API is api.<domain>
       dns_zone_id Route 53 hosted zone that holds the domain, or null when DNS is elsewhere (add the records by hand)
-      image_tag   the release the company runs (an ECR tag, e.g. "1.4.0")
   EOT
   type = map(object({
     number      = number
     domain      = string
     dns_zone_id = optional(string)
-    image_tag   = string
   }))
   default = {}
   validation {
-    condition     = alltrue([for k, v in var.labs : can(regex("^[a-z][a-z0-9-]{1,19}$", k)) && v.number >= 1 && v.number <= 15])
-    error_message = "Each lab needs a slug of 2-20 lower-case letters, digits or hyphens, and a number from 1 to 15."
+    condition     = alltrue([for k, v in var.labs : can(regex("^[a-z][a-z0-9-]{1,19}$", k)) && v.number >= 1 && v.number <= 99])
+    error_message = "Each lab needs a slug of 2-20 lower-case letters, digits or hyphens, and a number from 1 to 99."
   }
   validation {
     condition     = length(distinct([for v in values(var.labs) : v.number])) == length(var.labs)
@@ -64,6 +62,12 @@ variable "rds_instance_class" {
   default = "db.t4g.small"
 }
 
+variable "rds_connection_alarm" {
+  description = "db.t4g.small allows about 180."
+  type        = number
+  default     = 130
+}
+
 variable "rds_allocated_storage_gb" {
   type    = number
   default = 50
@@ -74,63 +78,67 @@ variable "rds_max_storage_gb" {
   default = 200
 }
 
-variable "cache_engine" {
-  type    = string
-  default = "valkey"
-}
-
-variable "cache_engine_version" {
-  type    = string
-  default = "8.0"
-}
-
-variable "cache_parameter_family" {
-  type    = string
-  default = "valkey8"
-}
-
-variable "cache_node_type" {
-  type    = string
-  default = "cache.t4g.micro"
-}
-
-variable "app_instance_type" {
-  type    = string
-  default = "t4g.medium"
-}
-
-variable "app_servers_enabled" {
-  description = "Start the two app servers. Leave false until the app changes in the runbook are released; the servers would not become healthy before."
-  type        = bool
-  default     = false
-}
-
-variable "compose_version" {
-  description = "Docker Compose plugin release installed on the servers."
+variable "eks_version" {
+  description = "Kubernetes version. 1.36 has standard support until 2 August 2027. Upgrade before that: extended support costs US$0.50 an hour more."
   type        = string
-  default     = "v2.29.7"
+  default     = "1.36"
+}
+
+variable "node_instance_type" {
+  description = "ARM. Each company needs about 1.5 GB of memory at rest (API x2, worker, screens x2, cache)."
+  type        = string
+  default     = "t4g.large"
+}
+
+variable "node_min" {
+  type    = number
+  default = 2
+  validation {
+    condition     = var.node_min >= 2
+    error_message = "At least two nodes, one in each availability zone."
+  }
+}
+
+variable "node_max" {
+  type    = number
+  default = 4
+}
+
+variable "nat_gateways" {
+  description = "1, or 2 to keep outgoing calls (GST portal, email, WhatsApp) working when an availability zone fails."
+  type        = number
+  default     = 1
+  validation {
+    condition     = contains([1, 2], var.nat_gateways)
+    error_message = "1 or 2."
+  }
+}
+
+variable "admin_cidrs" {
+  description = "Networks administrators reach the Kubernetes API from. Empty: from inside the VPC only."
+  type        = list(string)
+  default     = []
+  validation {
+    condition     = !contains(var.admin_cidrs, "0.0.0.0/0")
+    error_message = "Name your own networks: the Kubernetes API must not be open to everyone."
+  }
+}
+
+variable "cluster_admin_role_arns" {
+  description = "IAM roles (from Identity Center) whose people administer the cluster."
+  type        = list(string)
 }
 
 # ---------------------------------------------------------------- releases
-variable "deploy_repo_url" {
-  description = "Git URL of LIMS-Deploy, cloned by each server at start."
-  type        = string
-}
-
-variable "deploy_version" {
-  description = "The LIMS-Deploy tag the servers use."
-  type        = string
-}
-
 variable "github_org" {
   description = "GitHub owner of the app repositories, for the CI role's trust."
   type        = string
 }
 
 variable "github_repos" {
-  description = "Repositories allowed to push images."
-  type        = list(string)
-  default     = ["LIMS", "LIMS-UI"]
+  description = "Which repository may push which image."
+  type        = map(string)
+  default     = { lims = "LIMS", lims-ui = "LIMS-UI" }
 }
 
 # ---------------------------------------------------------------- protection and alerts
@@ -158,7 +166,7 @@ variable "oncall_emails" {
 
 variable "budget_monthly_usd" {
   type    = number
-  default = 300
+  default = 450
 }
 
 variable "budget_emails" {

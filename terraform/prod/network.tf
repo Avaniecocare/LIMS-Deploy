@@ -1,5 +1,6 @@
-# Step 2: one VPC over two AZs. Public subnets: the load balancer and the app servers (which call out to the GST
-# portal, WhatsApp and email without a NAT gateway). Private subnets, no internet route: the database and cache.
+# Step 2: one VPC over two AZs. Public subnets: the load balancer and the NAT gateway. Node subnets: Kubernetes, which
+# calls out (the GST portal, WhatsApp, email) through NAT and cannot be reached from the internet. Private subnets, no
+# internet route at all: the database.
 
 resource "aws_vpc" "main" {
   cidr_block           = var.vpc_cidr
@@ -18,7 +19,7 @@ resource "aws_subnet" "public" {
   vpc_id                  = aws_vpc.main.id
   availability_zone       = var.azs[count.index]
   cidr_block              = cidrsubnet(var.vpc_cidr, 8, count.index)
-  map_public_ip_on_launch = true
+  map_public_ip_on_launch = false
   tags                    = { Name = "lims-public-${var.azs[count.index]}" }
 }
 
@@ -28,6 +29,46 @@ resource "aws_subnet" "private" {
   availability_zone = var.azs[count.index]
   cidr_block        = cidrsubnet(var.vpc_cidr, 8, 10 + count.index)
   tags              = { Name = "lims-private-${var.azs[count.index]}" }
+}
+
+# Pods take an address each, so these are large.
+resource "aws_subnet" "nodes" {
+  count             = 2
+  vpc_id            = aws_vpc.main.id
+  availability_zone = var.azs[count.index]
+  cidr_block        = cidrsubnet(var.vpc_cidr, 4, 4 + count.index)
+  tags              = { Name = "lims-nodes-${var.azs[count.index]}" }
+}
+
+# One NAT gateway by default. A second costs about as much again and keeps outgoing calls working if an AZ fails.
+resource "aws_eip" "nat" {
+  count  = var.nat_gateways
+  domain = "vpc"
+  tags   = { Name = "lims-nat-${count.index}" }
+}
+
+resource "aws_nat_gateway" "main" {
+  count         = var.nat_gateways
+  allocation_id = aws_eip.nat[count.index].id
+  subnet_id     = aws_subnet.public[count.index].id
+  tags          = { Name = "lims-${var.azs[count.index]}" }
+  depends_on    = [aws_internet_gateway.main]
+}
+
+resource "aws_route_table" "nodes" {
+  count  = 2
+  vpc_id = aws_vpc.main.id
+  route {
+    cidr_block     = "0.0.0.0/0"
+    nat_gateway_id = aws_nat_gateway.main[min(count.index, var.nat_gateways - 1)].id
+  }
+  tags = { Name = "lims-nodes-${var.azs[count.index]}" }
+}
+
+resource "aws_route_table_association" "nodes" {
+  count          = 2
+  subnet_id      = aws_subnet.nodes[count.index].id
+  route_table_id = aws_route_table.nodes[count.index].id
 }
 
 resource "aws_route_table" "public" {
@@ -61,7 +102,7 @@ resource "aws_vpc_endpoint" "s3" {
   vpc_id            = aws_vpc.main.id
   service_name      = "com.amazonaws.${var.region}.s3"
   vpc_endpoint_type = "Gateway"
-  route_table_ids   = [aws_route_table.public.id, aws_route_table.private.id]
+  route_table_ids   = concat([aws_route_table.public.id, aws_route_table.private.id], aws_route_table.nodes[*].id)
   tags              = { Name = "lims-s3" }
 }
 
@@ -75,7 +116,7 @@ resource "aws_iam_role" "flow" {
   name = "lims-vpc-flow-logs"
   assume_role_policy = jsonencode({
     Version   = "2012-10-17"
-    Statement = [{ Effect = "Allow", Principal = { Service = "vpc-flow-logs.amazonaws.com" }, Action = "sts:AssumeRole" }]
+    Statement = [{ Effect = "Allow", Principal = { Service = "vpc-flow-logs.amazonaws.com" }, Action = "sts:AssumeRole", Condition = { StringEquals = { "aws:SourceAccount" = local.account_id } } }]
   })
 }
 
@@ -105,21 +146,9 @@ resource "aws_security_group" "alb" {
   vpc_id      = aws_vpc.main.id
 }
 
-resource "aws_security_group" "app" {
-  name        = "lims-app"
-  description = "App servers: only from the load balancer"
-  vpc_id      = aws_vpc.main.id
-}
-
 resource "aws_security_group" "db" {
   name        = "lims-db"
-  description = "RDS: only from the app servers"
-  vpc_id      = aws_vpc.main.id
-}
-
-resource "aws_security_group" "cache" {
-  name        = "lims-cache"
-  description = "ElastiCache: only from the app servers"
+  description = "RDS: only from the cluster"
   vpc_id      = aws_vpc.main.id
 }
 
@@ -133,45 +162,30 @@ resource "aws_vpc_security_group_ingress_rule" "alb_web" {
   cidr_ipv6         = each.value[2]
 }
 
-resource "aws_vpc_security_group_egress_rule" "alb_to_app" {
-  for_each                     = { ui = [8101, 8199], api = [3101, 3199] }
+# The load balancer sends straight to the pods, whose security group is the cluster's.
+resource "aws_vpc_security_group_egress_rule" "alb_to_pods" {
+  for_each                     = { ui = 8080, api = 3000 }
   security_group_id            = aws_security_group.alb.id
   ip_protocol                  = "tcp"
-  from_port                    = each.value[0]
-  to_port                      = each.value[1]
-  referenced_security_group_id = aws_security_group.app.id
+  from_port                    = each.value
+  to_port                      = each.value
+  referenced_security_group_id = aws_eks_cluster.main.vpc_config[0].cluster_security_group_id
 }
 
-resource "aws_vpc_security_group_ingress_rule" "app_from_alb" {
-  for_each                     = { ui = [8101, 8199], api = [3101, 3199] }
-  security_group_id            = aws_security_group.app.id
+resource "aws_vpc_security_group_ingress_rule" "pods_from_alb" {
+  for_each                     = { ui = 8080, api = 3000 }
+  security_group_id            = aws_eks_cluster.main.vpc_config[0].cluster_security_group_id
   ip_protocol                  = "tcp"
-  from_port                    = each.value[0]
-  to_port                      = each.value[1]
+  from_port                    = each.value
+  to_port                      = each.value
   referenced_security_group_id = aws_security_group.alb.id
 }
 
-# The servers call out: images, the GST portal, WhatsApp, email, PIN lookup, AWS APIs.
-resource "aws_vpc_security_group_egress_rule" "app_out" {
-  for_each          = { v4 = ["0.0.0.0/0", null], v6 = [null, "::/0"] }
-  security_group_id = aws_security_group.app.id
-  ip_protocol       = "-1"
-  cidr_ipv4         = each.value[0]
-  cidr_ipv6         = each.value[1]
-}
-
-resource "aws_vpc_security_group_ingress_rule" "db_from_app" {
+# Which pods may open it is the network policies' business: only api, worker and migrate.
+resource "aws_vpc_security_group_ingress_rule" "db_from_pods" {
   security_group_id            = aws_security_group.db.id
   ip_protocol                  = "tcp"
   from_port                    = 5432
   to_port                      = 5432
-  referenced_security_group_id = aws_security_group.app.id
-}
-
-resource "aws_vpc_security_group_ingress_rule" "cache_from_app" {
-  security_group_id            = aws_security_group.cache.id
-  ip_protocol                  = "tcp"
-  from_port                    = 6379
-  to_port                      = 6379
-  referenced_security_group_id = aws_security_group.app.id
+  referenced_security_group_id = aws_eks_cluster.main.vpc_config[0].cluster_security_group_id
 }

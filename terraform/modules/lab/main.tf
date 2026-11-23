@@ -1,10 +1,10 @@
-# One company: its file buckets (Mumbai + Hyderabad copy), its settings in SSM, its certificate, the load balancer
-# routing for its two addresses, its uptime checks and its alarms. Created once per entry in var.labs.
+# One company: its file buckets (Mumbai + Hyderabad copy), its secrets, its pods' identity, the load balancer routing for
+# its two addresses, its uptime checks and its alarms. Created once per entry in var.labs.
 
 terraform {
   required_providers {
     aws    = { source = "hashicorp/aws", version = "~> 6.0", configuration_aliases = [aws.dr, aws.use1] }
-    random = { source = "hashicorp/random", version = "~> 3.6" }
+    random = { source = "hashicorp/random", version = "~> 3.7" }
   }
 }
 
@@ -13,18 +13,18 @@ locals {
   bucket      = "lims-${var.slug}-files-${var.account_id}"
   bucket_dr   = "lims-${var.slug}-files-dr-${var.account_id}"
   api_domain  = "api.${var.domain}"
-  ui_port     = 8100 + var.number
-  api_port    = 3100 + var.number
   db_name     = "lims_${replace(var.slug, "-", "_")}"
   db_owner    = "lims_${replace(var.slug, "-", "_")}_owner"
   db_app      = "lims_${replace(var.slug, "-", "_")}_app"
-  ssm         = "/lims/prod/${var.slug}"
+  secret      = "lims/prod/${var.slug}"
+  namespace   = "lims-${var.slug}"
   has_zone    = var.dns_zone_id != null
   storage_url = "https://${local.bucket}.s3.${var.region}.amazonaws.com"
 }
 
 # ---------------------------------------------------------------- files: Mumbai bucket
-# Object Lock can only be turned on when a bucket is created. No default retention: the app locks issued PDFs.
+# Object Lock can only be turned on when a bucket is created. No default retention: versions are
+# kept instead, because the app replaces nothing and deletes nothing, and it may not delete versions.
 resource "aws_s3_bucket" "files" {
   bucket              = local.bucket
   object_lock_enabled = true
@@ -146,7 +146,7 @@ resource "aws_iam_role" "replication" {
   name = "lims-${var.slug}-replication"
   assume_role_policy = jsonencode({
     Version   = "2012-10-17"
-    Statement = [{ Effect = "Allow", Principal = { Service = "s3.amazonaws.com" }, Action = "sts:AssumeRole" }]
+    Statement = [{ Effect = "Allow", Principal = { Service = "s3.amazonaws.com" }, Action = "sts:AssumeRole", Condition = { StringEquals = { "aws:SourceAccount" = var.account_id } } }]
   })
   tags = local.tags
 }
@@ -192,10 +192,11 @@ resource "aws_s3_bucket_replication_configuration" "files" {
 # ---------------------------------------------------------------- routing
 resource "aws_lb_target_group" "ui" {
   name                 = "lims-${var.slug}-ui"
-  port                 = local.ui_port
+  port                 = 8080
   protocol             = "HTTP"
+  target_type          = "ip" # pods, kept up to date by a TargetGroupBinding
   vpc_id               = var.vpc_id
-  deregistration_delay = 30
+  deregistration_delay = 20
   health_check {
     path                = "/healthz"
     matcher             = "200"
@@ -209,10 +210,11 @@ resource "aws_lb_target_group" "ui" {
 
 resource "aws_lb_target_group" "api" {
   name                 = "lims-${var.slug}-api"
-  port                 = local.api_port
+  port                 = 3000
   protocol             = "HTTP"
+  target_type          = "ip" # pods, kept up to date by a TargetGroupBinding
   vpc_id               = var.vpc_id
-  deregistration_delay = 30
+  deregistration_delay = 20
   health_check {
     path                = "/health/ready"
     matcher             = "200"
@@ -266,84 +268,78 @@ resource "aws_route53_record" "app" {
   }
 }
 
-# ---------------------------------------------------------------- settings in SSM
-# Secrets are generated here and kept in the encrypted, access-restricted state. Integration secrets (SMTP password,
-# WhatsApp, e-invoicing) are added by hand with aws ssm put-parameter, so they never enter the state.
-resource "random_password" "db_owner" {
-  length  = 40
-  special = false
+# ---------------------------------------------------------------- what its pods may do in AWS
+resource "aws_iam_role" "pods" {
+  name               = "lims-${var.slug}-pods"
+  assume_role_policy = var.pod_identity_trust
+  tags               = local.tags
 }
 
-resource "random_password" "db_app" {
-  length  = 40
-  special = false
+# Its own files, and no deleting: versions and the Hyderabad copy are the backup.
+resource "aws_iam_role_policy" "pods" {
+  role = aws_iam_role.pods.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      { Effect = "Allow", Action = ["s3:GetObject", "s3:PutObject"], Resource = "${aws_s3_bucket.files.arn}/*" },
+      { Effect = "Allow", Action = "s3:ListBucket", Resource = aws_s3_bucket.files.arn },
+    ]
+  })
 }
 
-resource "random_password" "session" {
-  length  = 64
-  special = false
+resource "aws_eks_pod_identity_association" "pods" {
+  cluster_name    = var.cluster_name
+  namespace       = local.namespace
+  service_account = "lims"
+  role_arn        = aws_iam_role.pods.arn
+  tags            = local.tags
 }
 
-resource "random_password" "setup" {
-  length  = 48
-  special = false
+# ---------------------------------------------------------------- secrets
+# Made once, written straight to Secrets Manager and never kept in the state (ephemeral values, write-only arguments).
+# Raising secrets_version makes new ones: the database roles' passwords must be changed with it.
+ephemeral "random_password" "this" {
+  for_each = toset(["db_owner", "db_app", "session", "setup", "redis"])
+  length   = 48
+  special  = false
 }
 
 locals {
-  secure = {
-    DATABASE_URL           = "postgresql://${local.db_app}:${random_password.db_app.result}@${var.rds_address}:5432/${local.db_name}?sslmode=verify-full"
-    MIGRATION_DATABASE_URL = "postgresql://${local.db_owner}:${random_password.db_owner.result}@${var.rds_address}:5432/${local.db_name}?sslmode=verify-full"
-    DB_OWNER_PASSWORD      = random_password.db_owner.result
-    DB_APP_PASSWORD        = random_password.db_app.result
-    REDIS_URL              = "rediss://:${var.redis_auth_token}@${var.redis_address}:6379/${var.number}"
-    SESSION_SECRET         = random_password.session.result
-    # Only used while the lab has no user at all; harmless afterwards.
-    SETUP_TOKEN = random_password.setup.result
-  }
-  plain = {
-    DB_NAME             = local.db_name
-    DB_OWNER            = local.db_owner
-    DB_APP              = local.db_app
-    S3_BUCKET           = local.bucket
-    S3_REGION           = var.region
-    S3_ENDPOINT         = "https://s3.${var.region}.amazonaws.com"
-    S3_PUBLIC_ENDPOINT  = "https://s3.${var.region}.amazonaws.com"
-    S3_FORCE_PATH_STYLE = "false"
-    STORAGE_ORIGIN      = local.storage_url
-    FRONTEND_ORIGIN     = "https://${var.domain}"
-    PUBLIC_API_URL      = "https://${local.api_domain}"
-    API_URL             = "https://${local.api_domain}"
-    NODE_ENV            = "production"
-    COOKIE_SECURE       = "true"
-    LAB_NUMBER          = tostring(var.number)
-    UI_PORT             = tostring(local.ui_port)
-    API_PORT            = tostring(local.api_port)
-    version             = var.image_tag
-  }
+  db_url = "@${var.rds_address}:5432/${local.db_name}?sslmode=verify-full"
 }
 
-resource "aws_ssm_parameter" "secure" {
-  for_each = nonsensitive(toset(keys(local.secure)))
-  name     = "${local.ssm}/${each.key}"
-  type     = "SecureString"
-  value    = local.secure[each.key]
-  tags     = local.tags
+resource "aws_secretsmanager_secret" "app" {
+  name                    = "${local.secret}/app"
+  description             = "${var.slug}: what its app reads. Add SMTP, WhatsApp, e-invoicing, AI and LICENCE values here by hand."
+  recovery_window_in_days = 30
+  tags                    = local.tags
 }
 
-resource "aws_ssm_parameter" "plain" {
-  for_each = local.plain
-  name     = "${local.ssm}/${each.key}"
-  type     = "String"
-  value    = each.value
-  tags     = local.tags
+resource "aws_secretsmanager_secret_version" "app" {
+  secret_id = aws_secretsmanager_secret.app.id
+  secret_string_wo = jsonencode({
+    DATABASE_URL   = "postgresql://${local.db_app}:${ephemeral.random_password.this["db_app"].result}${local.db_url}"
+    REDIS_PASSWORD = ephemeral.random_password.this["redis"].result
+    REDIS_URL      = "redis://:${ephemeral.random_password.this["redis"].result}@redis:6379/0"
+    SESSION_SECRET = ephemeral.random_password.this["session"].result
+    # Only used while the company has no user at all; harmless afterwards.
+    SETUP_TOKEN = ephemeral.random_password.this["setup"].result
+  })
+  secret_string_wo_version = var.secrets_version
 }
 
-# ---------------------------------------------------------------- logs
-resource "aws_cloudwatch_log_group" "app" {
-  for_each          = toset(["api", "worker", "ui", "migrate"])
-  name              = "${local.ssm}/${each.key}"
-  retention_in_days = var.log_retention_days
-  tags              = local.tags
+# The table owner, for migrations only.
+resource "aws_secretsmanager_secret" "migrate" {
+  name                    = "${local.secret}/migrate"
+  description             = "${var.slug}: the database owner, for the migrate Job alone"
+  recovery_window_in_days = 30
+  tags                    = local.tags
+}
+
+resource "aws_secretsmanager_secret_version" "migrate" {
+  secret_id                = aws_secretsmanager_secret.migrate.id
+  secret_string_wo         = jsonencode({ MIGRATION_DATABASE_URL = "postgresql://${local.db_owner}:${ephemeral.random_password.this["db_owner"].result}${local.db_url}" })
+  secret_string_wo_version = var.secrets_version
 }
 
 # ---------------------------------------------------------------- uptime checks (Route 53, from several regions)
@@ -379,8 +375,8 @@ resource "aws_cloudwatch_metric_alarm" "site_down" {
 # ---------------------------------------------------------------- alarms
 resource "aws_cloudwatch_metric_alarm" "healthy" {
   for_each            = { ui = aws_lb_target_group.ui, api = aws_lb_target_group.api }
-  alarm_name          = "lims-${var.slug}-${each.key}-healthy-servers"
-  alarm_description   = "${var.slug}: fewer than 2 healthy ${each.key} servers for 5 minutes"
+  alarm_name          = "lims-${var.slug}-${each.key}-healthy-pods"
+  alarm_description   = "${var.slug}: fewer than 2 healthy ${each.key} pods for 5 minutes"
   namespace           = "AWS/ApplicationELB"
   metric_name         = "HealthyHostCount"
   dimensions          = { TargetGroup = each.value.arn_suffix, LoadBalancer = var.alb_arn_suffix }

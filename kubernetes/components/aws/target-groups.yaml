@@ -1,0 +1,11 @@
+# The load balancer, its certificates, firewall and alarms are Terraform's. These keep its target groups filled with this
+# company's pods. Terraform also opens the pods' security group to it.
+apiVersion: elbv2.k8s.aws/v1beta1
+kind: TargetGroupBinding
+metadata: { name: api }
+spec: { targetType: ip, targetGroupARN: API_TARGET_GROUP_ARN, serviceRef: { name: api, port: http } }
+---
+apiVersion: elbv2.k8s.aws/v1beta1
+kind: TargetGroupBinding
+metadata: { name: ui }
+spec: { targetType: ip, targetGroupARN: UI_TARGET_GROUP_ARN, serviceRef: { name: ui, port: http } }

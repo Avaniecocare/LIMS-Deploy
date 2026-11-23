@@ -4,7 +4,7 @@ variable "slug" {
 }
 
 variable "number" {
-  description = "1-15, unique, never reused: Redis database, host ports 8100+n / 3100+n, listener rule priority."
+  description = "1-99, unique, never reused: listener rule priority."
   type        = number
 }
 
@@ -17,11 +17,6 @@ variable "dns_zone_id" {
   description = "Route 53 hosted zone for the domain, or null when DNS is elsewhere (records added by hand)."
   type        = string
   default     = null
-}
-
-variable "image_tag" {
-  description = "The release this company runs."
-  type        = string
 }
 
 variable "account_id" {
@@ -67,15 +62,6 @@ variable "rds_address" {
   type = string
 }
 
-variable "redis_address" {
-  type = string
-}
-
-variable "redis_auth_token" {
-  type      = string
-  sensitive = true
-}
-
 variable "alarm_topic_arn" {
   type = string
 }
@@ -84,6 +70,17 @@ variable "alarm_topic_use1_arn" {
   type = string
 }
 
-variable "log_retention_days" {
-  type = number
+variable "cluster_name" {
+  type = string
+}
+
+variable "pod_identity_trust" {
+  description = "The trust policy that lets a pod in this account's clusters take a role."
+  type        = string
+}
+
+variable "secrets_version" {
+  description = "Raise to make new secrets."
+  type        = number
+  default     = 1
 }

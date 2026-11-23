@@ -1,6 +1,6 @@
 # Step 9: alarms. Everything notifies lims-oncall (email here; add SMS or a paging service on the topic by hand).
 # Route 53 health checks report only to us-east-1, so their alarms use a second topic there. Per-company alarms
-# (health checks, healthy servers, errors, replication) are in the lab module.
+# (health checks, healthy pods, errors, replication) are in the lab module.
 
 resource "aws_sns_topic" "oncall" {
   name = "lims-oncall"
@@ -85,19 +85,67 @@ resource "aws_cloudwatch_metric_alarm" "rds_storage" {
   ok_actions          = local.alarm.actions
 }
 
-resource "aws_cloudwatch_metric_alarm" "cache_memory" {
-  # The replication group's two members are always named <group>-001 and <group>-002.
-  for_each            = toset(["lims-cache-001", "lims-cache-002"])
-  alarm_name          = "lims-cache-memory-${each.key}"
-  alarm_description   = "Cache memory above 80% (the job queue never evicts, so a full cache stops new jobs)"
-  namespace           = "AWS/ElastiCache"
-  metric_name         = "DatabaseMemoryUsagePercentage"
-  dimensions          = { CacheClusterId = each.key }
+resource "aws_cloudwatch_metric_alarm" "rds_memory" {
+  alarm_name          = "lims-rds-free-memory"
+  alarm_description   = "Database free memory below 128 MB for 15 minutes"
+  namespace           = "AWS/RDS"
+  metric_name         = "FreeableMemory"
+  dimensions          = { DBInstanceIdentifier = aws_db_instance.main.identifier }
+  statistic           = "Average"
+  period              = 300
+  evaluation_periods  = 3
+  threshold           = 128 * 1024 * 1024
+  comparison_operator = "LessThanThreshold"
+  alarm_actions       = local.alarm.actions
+  ok_actions          = local.alarm.actions
+}
+
+# Each API and worker copy holds up to 13.
+resource "aws_cloudwatch_metric_alarm" "rds_connections" {
+  alarm_name          = "lims-rds-connections"
+  alarm_description   = "More database connections than expected: check the number of pods before they run out"
+  namespace           = "AWS/RDS"
+  metric_name         = "DatabaseConnections"
+  dimensions          = { DBInstanceIdentifier = aws_db_instance.main.identifier }
   statistic           = "Maximum"
   period              = 300
   evaluation_periods  = 2
-  threshold           = 80
+  threshold           = var.rds_connection_alarm
   comparison_operator = "GreaterThanThreshold"
+  alarm_actions       = local.alarm.actions
+  ok_actions          = local.alarm.actions
+}
+
+# The load balancer itself failing to reach anything: pods gone, or the cluster unreachable.
+resource "aws_cloudwatch_metric_alarm" "alb_5xx" {
+  alarm_name          = "lims-load-balancer-5xx"
+  alarm_description   = "The load balancer answered more than 20 requests itself with an error in 5 minutes"
+  namespace           = "AWS/ApplicationELB"
+  metric_name         = "HTTPCode_ELB_5XX_Count"
+  dimensions          = { LoadBalancer = aws_lb.main.arn_suffix }
+  statistic           = "Sum"
+  period              = 300
+  evaluation_periods  = 1
+  threshold           = 20
+  comparison_operator = "GreaterThanThreshold"
+  treat_missing_data  = "notBreaching"
+  alarm_actions       = local.alarm.actions
+  ok_actions          = local.alarm.actions
+}
+
+# A backup that silently stops is found only when it is needed.
+resource "aws_cloudwatch_metric_alarm" "backup_missing" {
+  alarm_name          = "lims-backup-missing"
+  alarm_description   = "No backup has completed for a day"
+  namespace           = "AWS/Backup"
+  metric_name         = "NumberOfBackupJobsCompleted"
+  dimensions          = { BackupVaultName = aws_backup_vault.prod.name }
+  statistic           = "Sum"
+  period              = 86400
+  evaluation_periods  = 1
+  threshold           = 1
+  comparison_operator = "LessThanThreshold"
+  treat_missing_data  = "breaching"
   alarm_actions       = local.alarm.actions
   ok_actions          = local.alarm.actions
 }
@@ -115,53 +163,6 @@ resource "aws_cloudwatch_event_rule" "rds_failover" {
 resource "aws_cloudwatch_event_target" "rds_failover" {
   rule = aws_cloudwatch_event_rule.rds_failover.name
   arn  = aws_sns_topic.oncall.arn
-}
-
-resource "aws_cloudwatch_event_rule" "cache_failover" {
-  name        = "lims-cache-failover"
-  description = "The cache failed over to its replica"
-  event_pattern = jsonencode({
-    source        = ["aws.elasticache"]
-    "detail-type" = ["ElastiCache Replication Group Failover Completed", "ElastiCache Cache Cluster Failover Completed"]
-  })
-}
-
-resource "aws_cloudwatch_event_target" "cache_failover" {
-  rule = aws_cloudwatch_event_rule.cache_failover.name
-  arn  = aws_sns_topic.oncall.arn
-}
-
-# ---------------------------------------------------------------- servers (CloudWatch agent, per server group)
-resource "aws_cloudwatch_metric_alarm" "server_memory" {
-  alarm_name          = "lims-app-memory"
-  alarm_description   = "App server memory above 85%"
-  namespace           = "CWAgent"
-  metric_name         = "mem_used_percent"
-  dimensions          = { AutoScalingGroupName = aws_autoscaling_group.app.name }
-  statistic           = "Maximum"
-  period              = 300
-  evaluation_periods  = 2
-  threshold           = 85
-  comparison_operator = "GreaterThanThreshold"
-  treat_missing_data  = "notBreaching"
-  alarm_actions       = local.alarm.actions
-  ok_actions          = local.alarm.actions
-}
-
-resource "aws_cloudwatch_metric_alarm" "server_disk" {
-  alarm_name          = "lims-app-disk"
-  alarm_description   = "App server disk above 80%"
-  namespace           = "CWAgent"
-  metric_name         = "disk_used_percent"
-  dimensions          = { AutoScalingGroupName = aws_autoscaling_group.app.name }
-  statistic           = "Maximum"
-  period              = 300
-  evaluation_periods  = 1
-  threshold           = 80
-  comparison_operator = "GreaterThanThreshold"
-  treat_missing_data  = "notBreaching"
-  alarm_actions       = local.alarm.actions
-  ok_actions          = local.alarm.actions
 }
 
 # ---------------------------------------------------------------- backups

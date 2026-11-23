@@ -12,8 +12,13 @@ output "rds_master_secret_arn" {
   value       = aws_db_instance.main.master_user_secret[0].secret_arn
 }
 
-output "cache_endpoint" {
-  value = aws_elasticache_replication_group.main.primary_endpoint_address
+output "cluster_name" {
+  value = aws_eks_cluster.main.name
+}
+
+output "network" {
+  description = "For each company's company.properties."
+  value       = { VPC_PUBLIC_CIDR = cidrsubnet(var.vpc_cidr, 7, 0), VPC_DATA_CIDR = cidrsubnet(var.vpc_cidr, 7, 5) }
 }
 
 output "image_registry" {
@@ -21,8 +26,13 @@ output "image_registry" {
 }
 
 output "ci_role_arn" {
-  description = "Set as the role GitHub Actions assumes to push images."
-  value       = aws_iam_role.ci_push.arn
+  description = "Set in each repository as the role GitHub Actions assumes to push its image."
+  value       = { for k, r in aws_iam_role.ci_push : k => r.arn }
+}
+
+output "ci_subjects" {
+  description = "Who may take each role."
+  value       = local.ci_subjects
 }
 
 output "labs" {

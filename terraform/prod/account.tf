@@ -1,5 +1,5 @@
 # Step 1: the account's own protections. IAM Identity Center, root MFA and the opt-in of the Hyderabad region are
-# done by hand first (runbook, Step 1).
+# done by hand first.
 
 locals {
   account_id = data.aws_caller_identity.me.account_id

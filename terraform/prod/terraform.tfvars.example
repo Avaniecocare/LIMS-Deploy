@@ -1,14 +1,13 @@
 # Copy to terraform.tfvars (git-ignored: it names real companies and people) and fill in.
 
-deploy_repo_url = "https://github.com/<github-owner>/LIMS-Deploy.git"
-deploy_version  = "v1.0.0"
 github_org      = "<github-owner>"
+
+# Who administers the cluster, and from where.
+cluster_admin_role_arns = ["arn:aws:iam::<account>:role/aws-reserved/sso.amazonaws.com/<region>/AWSReservedSSO_AdministratorAccess_<id>"]
+admin_cidrs             = ["<office address>/32"]
 
 oncall_emails = ["oncall@example.com"]
 budget_emails = ["accounts@example.com"]
-
-# Leave false until the app changes in the runbook are released.
-app_servers_enabled = false
 
 # Count first, block after a week of reading the sampled requests.
 waf_block = false
@@ -17,11 +16,10 @@ waf_block = false
 enable_backup_vault_lock = false
 
 labs = {
-  # First company. number: 1-15, unique, never reused.
+  # First company. number: 1-99, unique, never reused.
   examplelab = {
     number      = 1
     domain      = "lims.example.com"
     dns_zone_id = null # or the Route 53 hosted zone id, e.g. "Z0123456789ABCDEFGHIJ"
-    image_tag   = "1.0.0"
   }
 }

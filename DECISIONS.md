@@ -16,12 +16,16 @@
 - **`EINVOICE_*` are deployment settings, written into `generated.env`** like the WhatsApp and assistant settings. They hold the lab's e-invoice API credentials, so they belong in the company's `deployment.env` (outside this repository), never in git. The module stays off in the app until an Admin turns it on.
 
 ## Production on AWS (Terraform)
-- **One root module for the shared setup, one `modules/lab` per company from a `labs` map.** Adding a company is an entry and an apply; its number (1-15, never reused) fixes its Redis database, host ports and routing priority, so companies never collide on shared servers, cache or load balancer.
-- **Per-company database roles** (`lims_<slug>_owner`, `lims_<slug>_app`): one RDS instance serves every company and role names are instance-wide.
-- **Certificates at the top level, not in the company module,** because the HTTPS listener needs the first company's certificate before any company's routing rules can attach to it (otherwise a dependency cycle).
-- **App servers in public subnets, reachable only from the load balancer,** instead of private subnets with NAT gateways (US$35-45 a month each). Database and cache stay private with no internet route.
-- **Generated secrets live in the encrypted, versioned state bucket; integration secrets are put in SSM by hand** so they never enter state. Buckets carry `prevent_destroy`; removing a company is a written procedure, not a plan side effect.
-- **`app_servers_enabled` defaults to false** until the app changes in the runbook exist; everything else can be built and checked first. `terraform test` plans the whole setup against mocked AWS, which caught validation records keyed by apply-time values before any real plan.
+- **EKS replaces the EC2 servers.** The servers shared one role that could read every company's files and secrets, one unhealthy company could take the others down, and their start-up script was never written. Pods get one company's identity each.
+- **Terraform owns the load balancer; pods join its target groups** (TargetGroupBinding). The firewall, certificates, alarms and listener stay in one place, and the controller in the cluster may only fill target groups.
+- **One root module for the shared setup, one `modules/lab` per company from a `labs` map.** Adding a company is an entry and an apply.
+- **Per-company database roles** (`lims_<slug>_owner`, `lims_<slug>_app`): one RDS instance serves every company and role names are instance-wide. A company that must have its own instance needs its own copy of this setup.
+- **Nodes in private subnets behind one NAT gateway,** two when outgoing calls must survive losing a zone. The database has no internet route.
+- **Secrets never enter the plan or the state** (ephemeral values, write-only arguments). Integration secrets are added by hand to the same secret.
+- **The pods may read and write their files and delete nothing.** Versions and the Hyderabad copy are the backup.
+- **Certificates at the top level, not in the company module,** because the HTTPS listener needs the first company's certificate before any company's routing rules can attach to it.
+- **Release images are never swept from ECR:** a company may be running any of them.
+- **`terraform test` plans the whole setup against mocked AWS,** in CI.
 
 ## Trial package
 - **`docker-compose/` is one company on one machine at one address, over plain HTTP on localhost.** Caddy routes the API, signed file links and the screens under one origin, so no DNS or certificates are needed to look at the product. `compose/` with `scripts/` stays the way to run several companies on a server.

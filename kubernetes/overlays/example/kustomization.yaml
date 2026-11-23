@@ -12,10 +12,10 @@ configMapGenerator:
   - name: lims-config
     envs: [company.properties]
 replacements:
-  - source: { kind: ConfigMap, name: lims-config, fieldPath: data.APP_DOMAIN }
-    targets: [{ select: { kind: Ingress, name: lims }, fieldPaths: [spec.rules.0.host] }]
-  - source: { kind: ConfigMap, name: lims-config, fieldPath: data.API_DOMAIN }
-    targets: [{ select: { kind: Ingress, name: lims }, fieldPaths: [spec.rules.1.host] }]
+  - source: { kind: ConfigMap, name: lims-config, fieldPath: data.API_TARGET_GROUP_ARN }
+    targets: [{ select: { kind: TargetGroupBinding, name: api }, fieldPaths: [spec.targetGroupARN] }]
+  - source: { kind: ConfigMap, name: lims-config, fieldPath: data.UI_TARGET_GROUP_ARN }
+    targets: [{ select: { kind: TargetGroupBinding, name: ui }, fieldPaths: [spec.targetGroupARN] }]
   - source: { kind: ConfigMap, name: lims-config, fieldPath: data.VPC_PUBLIC_CIDR }
     targets: [{ select: { kind: NetworkPolicy, name: from-load-balancer }, fieldPaths: [spec.ingress.0.from.0.ipBlock.cidr] }]
   - source: { kind: ConfigMap, name: lims-config, fieldPath: data.VPC_DATA_CIDR }
