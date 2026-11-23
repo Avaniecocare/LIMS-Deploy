@@ -112,6 +112,8 @@ services:
     # Chromium renders PDFs here; Docker's default 64 MB /dev/shm is too small for it.
     shm_size: 256m
     command: ['node', 'dist/main.js', 'worker']
+    # The worker finishes the job it is on before stopping, for up to 60 seconds.
+    stop_grace_period: 70s
     # The worker serves no HTTP, so the image's /health/live check does not apply. This one proves
     # the process's environment can reach Redis, where its job queues live.
     healthcheck:

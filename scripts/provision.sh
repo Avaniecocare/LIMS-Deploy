@@ -17,7 +17,6 @@ for a in "${EXTRA_ARGS[@]:-}"; do
   esac
 done
 load_client
-[ -f "$CLIENT_DIR/branding/logo.png" ] || compgen -G "$CLIENT_DIR/branding/*" >/dev/null || die "Put the logo and favicon in $CLIENT_DIR/branding"
 
 if [ ! -f "$CLIENT_DIR/secrets.env" ]; then
   log "Generating secrets for $CLIENT_SLUG"

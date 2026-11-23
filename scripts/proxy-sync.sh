@@ -32,9 +32,8 @@ $FILES_DOMAIN {
 		query X-Amz-Signature=*
 	}
 	handle @signed {
-		reverse_proxy lims-$CLIENT_SLUG-minio-1:9000 {
-			header_up Host {upstream_hostport}
-		}
+		# The Host header is part of what was signed, so it is passed on unchanged (Caddy's default).
+		reverse_proxy lims-$CLIENT_SLUG-minio-1:9000
 	}
 	handle {
 		respond 403

@@ -33,7 +33,7 @@ check() {
   branding="$(in_api "$c" "fetch('http://localhost:3000/api/v1/public/branding').then(r=>r.text()).then(console.log)")"
   echo "$branding" | grep -q "$own" || { echo "FAIL: $c branding lacks $own"; exit 1; }
   if echo "$branding" | grep -q "$other"; then echo "FAIL: $c branding shows $other"; exit 1; fi
-  echo "$branding" | grep -qE 'bank|gstin|pan|account' && { echo "FAIL: $c public branding carries private fields"; exit 1; }
+  echo "$branding" | grep -qiE '"(bank[a-z]*|gstin|pan|account[a-z]*)"' && { echo "FAIL: $c public branding carries private fields"; exit 1; }
   echo "ok: $c"
 }
 
