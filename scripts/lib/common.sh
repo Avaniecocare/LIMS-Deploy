@@ -38,6 +38,7 @@ load_client() {
   . "$CLIENT_DIR/deployment.env"
   # shellcheck disable=SC1091
   . "$CLIENT_DIR/versions.env"
+  # shellcheck disable=SC1091
   [ -f "$CLIENT_DIR/secrets.env" ] && . "$CLIENT_DIR/secrets.env"
   set +a
   [[ "${CLIENT_SLUG:-}" =~ ^[a-z0-9][a-z0-9-]{0,40}$ ]] || die "CLIENT_SLUG must be lowercase letters, digits and hyphens"
