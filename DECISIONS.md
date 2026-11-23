@@ -22,3 +22,8 @@
 - **App servers in public subnets, reachable only from the load balancer,** instead of private subnets with NAT gateways (US$35-45 a month each). Database and cache stay private with no internet route.
 - **Generated secrets live in the encrypted, versioned state bucket; integration secrets are put in SSM by hand** so they never enter state. Buckets carry `prevent_destroy`; removing a company is a written procedure, not a plan side effect.
 - **`app_servers_enabled` defaults to false** until the app changes in the runbook exist; everything else can be built and checked first. `terraform test` plans the whole setup against mocked AWS, which caught validation records keyed by apply-time values before any real plan.
+
+## Trial package
+- **`docker-compose/` is one company on one machine at one address, over plain HTTP on localhost.** Caddy routes the API, signed file links and the screens under one origin, so no DNS or certificates are needed to look at the product. `compose/` with `scripts/` stays the way to run several companies on a server.
+- **Secrets are made by the first start, in a volume,** as files the containers read. `.env` holds no passwords except an optional SMTP one, and the setup token is never in a log.
+- **`scripts/trial-check.mjs` uses it as a customer would:** install, work, files, restart, backup, restore, the trial ending, and a renewal.

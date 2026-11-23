@@ -1,0 +1,169 @@
+# Trial and small installations: everything on one machine, at one address, started with one command.
+#   cp .env.example .env && docker compose up -d
+# Secrets are made on first start and kept in the `secrets` volume; nothing needs editing but .env. For several
+# companies on one server, with TLS and scheduled backups, use ../compose and ../scripts instead.
+name: lims-trial
+
+x-logging: &logging
+  driver: json-file
+  options: { max-size: '10m', max-file: '3' }
+
+x-app: &app
+  image: ${LIMS_IMAGE:-ghcr.io/avaniecocare/lims}:${LIMS_VERSION:?set LIMS_VERSION in .env}
+  restart: unless-stopped
+  logging: *logging
+  networks: [internal]
+  entrypoint: ['sh', '/lims/with-secrets.sh']
+  environment: &app-env
+    NODE_ENV: production
+    PORT: '3000'
+    LOG_LEVEL: ${LOG_LEVEL:-info}
+    BRAND_NAME: ${BRAND_NAME:-LIMS}
+    LICENCE: ${LICENCE:-}
+    # One address for the app, the API and files: see Caddyfile.
+    FRONTEND_ORIGIN: &url ${LIMS_URL:-http://localhost:8080}
+    PUBLIC_API_URL: *url
+    S3_PUBLIC_ENDPOINT: *url
+    COOKIE_SECURE: ${COOKIE_SECURE:-false}
+    # The proxy in this file replaces whatever X-Forwarded-For a caller sends.
+    TRUST_PROXY: '1'
+    S3_ENDPOINT: http://storage:9000
+    S3_BUCKET: lims-files
+    S3_FORCE_PATH_STYLE: 'true'
+    SMTP_HOST: ${SMTP_HOST:-localhost}
+    SMTP_PORT: ${SMTP_PORT:-587}
+    SMTP_SECURE: ${SMTP_SECURE:-false}
+    SMTP_USER: ${SMTP_USER:-}
+    SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+    SMTP_FROM: ${SMTP_FROM:-lims@localhost.example}
+    # Without a mail server, mail is recorded and not sent.
+    SMTP_TRANSPORT: ${SMTP_TRANSPORT:-json}
+    HELP_INDEX_URL: http://ui:8080/help/help-index.json
+    PINCODE_LOOKUP_URL: ${PINCODE_LOOKUP_URL-https://api.postalpincode.in/pincode/}
+  volumes:
+    - secrets:/run/lims:ro
+    - ./with-secrets.sh:/lims/with-secrets.sh:ro
+
+services:
+  # Makes the secrets once. Readable by the containers that need them, never printed.
+  secrets:
+    image: postgres:18-alpine
+    restart: 'no'
+    network_mode: none
+    entrypoint: ['sh', '/lims/make-secrets.sh']
+    volumes:
+      - secrets:/run/lims
+      - ./make-secrets.sh:/lims/make-secrets.sh:ro
+
+  postgres:
+    image: postgres:18-alpine
+    restart: unless-stopped
+    logging: *logging
+    mem_limit: ${POSTGRES_MEM_LIMIT:-512m}
+    environment:
+      POSTGRES_USER: lims_owner
+      POSTGRES_PASSWORD_FILE: /run/lims/owner-password
+      POSTGRES_DB: lims
+    volumes:
+      - pgdata:/var/lib/postgresql
+      - secrets:/run/lims:ro
+      - ./db-init.sh:/docker-entrypoint-initdb.d/10-app-role.sh:ro
+    networks: [internal]
+    depends_on:
+      secrets: { condition: service_completed_successfully }
+    healthcheck: { test: ['CMD-SHELL', 'pg_isready -U lims_owner -d lims -h 127.0.0.1'], interval: 5s, timeout: 3s, retries: 30 }
+
+  redis:
+    image: redis:8-alpine
+    restart: unless-stopped
+    logging: *logging
+    mem_limit: ${REDIS_MEM_LIMIT:-128m}
+    # From a file, so the password is not in the process list.
+    entrypoint: ['sh', '-c', 'umask 077; printf "requirepass %s\nappendonly yes\nmaxmemory-policy noeviction\n" "$$(cat /run/lims/redis-password)" > /tmp/redis.conf; exec redis-server /tmp/redis.conf --dir /data']
+    volumes:
+      - redisdata:/data
+      - secrets:/run/lims:ro
+    networks: [internal]
+    depends_on:
+      secrets: { condition: service_completed_successfully }
+    healthcheck: { test: ['CMD-SHELL', 'REDISCLI_AUTH="$$(cat /run/lims/redis-password)" redis-cli ping | grep -q PONG'], interval: 5s, timeout: 3s, retries: 30 }
+
+  storage:
+    image: versity/versitygw:v1.11.0
+    restart: unless-stopped
+    logging: *logging
+    mem_limit: ${S3_MEM_LIMIT:-256m}
+    # --sidecar: file types and checksums in ordinary files, so a tar backup carries them.
+    entrypoint: ['sh', '-c', 'mkdir -p /data/objects /data/meta; export ROOT_ACCESS_KEY="$$(cat /run/lims/s3-access-key)" ROOT_SECRET_KEY="$$(cat /run/lims/s3-secret-key)"; exec versitygw --port :9000 posix --sidecar /data/meta /data/objects']
+    volumes:
+      - files:/data
+      - secrets:/run/lims:ro
+    networks: [internal]
+    depends_on:
+      secrets: { condition: service_completed_successfully }
+    # Any answer counts: unsigned requests are refused.
+    healthcheck: { test: ['CMD-SHELL', 'wget -q -T 4 -O /dev/null http://127.0.0.1:9000/ 2>&1 | grep -q . ; nc -z -w 4 127.0.0.1 9000'], interval: 10s, timeout: 5s, retries: 12 }
+
+  # As the table owner; the app itself connects as a role that cannot alter tables.
+  migrate:
+    <<: *app
+    restart: 'no'
+    command: ['migrate']
+    depends_on:
+      postgres: { condition: service_healthy }
+
+  api:
+    <<: *app
+    mem_limit: ${API_MEM_LIMIT:-768m}
+    command: ['api']
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+      storage: { condition: service_healthy }
+
+  worker:
+    <<: *app
+    mem_limit: ${WORKER_MEM_LIMIT:-1g}
+    # Chromium renders PDFs here; Docker's default 64 MB is too small for it.
+    shm_size: 256m
+    # It finishes the job it is on before stopping.
+    stop_grace_period: 70s
+    command: ['worker']
+    healthcheck: { disable: true }
+    depends_on:
+      api: { condition: service_healthy }
+
+  ui:
+    image: ${LIMS_UI_IMAGE:-ghcr.io/avaniecocare/lims-ui}:${LIMS_UI_VERSION:?set LIMS_UI_VERSION in .env}
+    restart: unless-stopped
+    logging: *logging
+    mem_limit: ${UI_MEM_LIMIT:-64m}
+    environment:
+      API_URL: *url
+      APP_URL: *url
+      STORAGE_ORIGIN: *url
+      APP_NAME: ${BRAND_NAME:-LIMS}
+    networks: [internal]
+
+  # The only thing reachable from outside, and by default only from this machine.
+  proxy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    logging: *logging
+    mem_limit: ${CADDY_MEM_LIMIT:-128m}
+    ports: ['${LIMS_BIND:-127.0.0.1}:${LIMS_PORT:-8080}:8080']
+    volumes: ['./Caddyfile:/etc/caddy/Caddyfile:ro']
+    networks: [internal]
+    depends_on:
+      api: { condition: service_healthy }
+      ui: { condition: service_healthy }
+    healthcheck: { test: ['CMD', 'wget', '-q', '-O', '/dev/null', 'http://127.0.0.1:8080/health/ready'], interval: 10s, timeout: 5s, retries: 12 }
+
+volumes:
+  secrets:
+  pgdata:
+  redisdata:
+  files:
+
+networks:
+  internal:

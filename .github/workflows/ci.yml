@@ -28,7 +28,7 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - name: Shellcheck
-        run: shellcheck -x -P SCRIPTDIR scripts/*.sh scripts/lib/*.sh compose/*.sh
+        run: shellcheck -x -P SCRIPTDIR scripts/*.sh scripts/lib/*.sh compose/*.sh docker-compose/*.sh
       - name: Only template and fictional examples under clients/
         run: |
           bad="$(git ls-files clients | grep -vE '^clients/(_template|example-[a-z]+)/' || true)"
@@ -49,6 +49,7 @@ jobs:
           CLIENT_DIR="$d" DEPLOY_ROOT="$PWD" docker compose -p lims-bluepeak -f compose/docker-compose.yml \
             --env-file "$d/secrets.env" --env-file "$d/versions.env" --env-file "$d/deployment.env" config -q
           PROXY_SITES_DIR="$RUNNER_TEMP/sites" docker compose -f proxy/docker-compose.yml config -q
+          LIMS_VERSION=x LIMS_UI_VERSION=y docker compose -f docker-compose/docker-compose.yml --env-file docker-compose/.env.example config -q
   white-label:
     # Runs once images exist; set repository variables LIMS_VERSION and LIMS_UI_VERSION.
     if: github.event_name == 'push' && vars.LIMS_VERSION != ''

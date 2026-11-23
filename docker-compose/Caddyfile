@@ -1,0 +1,30 @@
+# Everything at one address, over plain HTTP inside the machine. Put your own TLS proxy in front for anything else.
+{
+	admin off
+	auto_https off
+}
+:8080 {
+	header -Server
+	@api path /api/* /health/*
+	handle @api {
+		request_body {
+			max_size 20MB
+		}
+		reverse_proxy api:3000
+	}
+	# Only short-lived signed links, and only to read. The Host header is part of what was signed, so it is passed on.
+	@signed {
+		path /lims-files/*
+		method GET HEAD
+		query X-Amz-Signature=*
+	}
+	handle @signed {
+		reverse_proxy storage:9000
+	}
+	handle /lims-files* {
+		respond 403
+	}
+	handle {
+		reverse_proxy ui:8080
+	}
+}
