@@ -31,7 +31,7 @@ x-app: &app
 services:
   postgres:
     mem_limit: ${POSTGRES_MEM_LIMIT:-512m}
-    image: postgres:18-alpine
+    image: postgres:19-alpine
     restart: unless-stopped
     logging: *logging
     environment:
