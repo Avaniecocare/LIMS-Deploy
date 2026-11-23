@@ -132,6 +132,8 @@ services:
     logging: *logging
     environment:
       API_URL: https://${API_DOMAIN:?}
+      # The help site's own address.
+      APP_URL: https://${APP_DOMAIN:?}
       STORAGE_ORIGIN: https://${FILES_DOMAIN:?}
       # The name of the app when installed on a phone's home screen.
       APP_NAME: ${BRAND_NAME:-Laboratory}
