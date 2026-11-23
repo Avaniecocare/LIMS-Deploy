@@ -32,7 +32,8 @@ done
 [ -f "$CLIENT_DIR/secrets.env" ] || die "Not provisioned yet. Run scripts/provision.sh first."
 
 TMP=""
-cleanup() { [ -n "$TMP" ] && rm -rf "$TMP"; }
+# An `if`, not `&&`: a false test as the last thing in an EXIT trap would make a good restore report failure.
+cleanup() { if [ -n "$TMP" ]; then rm -rf "$TMP"; fi; }
 trap cleanup EXIT
 
 # --- unpack an encrypted or plain archive into a private temporary folder ----------------------
