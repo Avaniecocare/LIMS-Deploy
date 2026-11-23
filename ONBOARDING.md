@@ -22,7 +22,7 @@ cp deployment.env.example /srv/lims-clients/$SLUG/deployment.env
 cp versions.env.example   /srv/lims-clients/$SLUG/versions.env
 ```
 
-Fill in both files. Double-quote every value. `S3_IMAGE` must be the storage image your organisation has chosen; see [DECISIONS.md](DECISIONS.md). There is no `company.env` for a new laboratory.
+Fill in both files. Double-quote every value. Leave `S3_IMAGE` empty for the tested default store; see [DECISIONS.md](DECISIONS.md). There is no `company.env` for a new laboratory.
 
 ## 3. Point DNS
 

@@ -57,13 +57,16 @@ services:
     environment: { REDIS_PASSWORD: '${REDIS_PASSWORD:?}' }
 
   minio:
-    # An S3-compatible server. Each deployment names its image in deployment.env; see DECISIONS.md.
+    # An S3-compatible server: VersityGW unless deployment.env names another; see use_storage_defaults in scripts/lib/common.sh.
     mem_limit: ${S3_MEM_LIMIT:-256m}
     image: ${S3_IMAGE:?set S3_IMAGE in deployment.env}
     restart: unless-stopped
     logging: *logging
     command: ${S3_COMMAND:-server /data}
+    # Under the names the common servers read.
     environment:
+      ROOT_ACCESS_KEY: ${S3_ACCESS_KEY:?}
+      ROOT_SECRET_KEY: ${S3_SECRET_KEY:?}
       MINIO_ROOT_USER: ${S3_ACCESS_KEY:?}
       MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY:?}
     volumes:

@@ -7,6 +7,7 @@ parse_client_dir "$@"
 load_client
 [ -f "$CLIENT_DIR/secrets.env" ] || die "Not provisioned yet. Run scripts/provision.sh first."
 write_generated_env
+prepare_storage
 compose up -d --wait postgres redis minio
 compose run --rm migrate
 compose up -d --force-recreate api worker ui

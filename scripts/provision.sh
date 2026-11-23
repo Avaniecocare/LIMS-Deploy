@@ -44,6 +44,7 @@ if [ "$OFFLINE" = true ]; then
 else
   compose pull --quiet --policy missing || die "Could not pull the images. Check versions.env and the registry login (docker login ghcr.io), or pass --offline to use local images."
 fi
+prepare_storage
 compose up -d --wait postgres redis minio
 compose run --rm migrate
 compose up -d api worker ui

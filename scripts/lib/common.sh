@@ -44,7 +44,7 @@ load_client() {
   [[ "${CLIENT_SLUG:-}" =~ ^[a-z0-9][a-z0-9-]{0,40}$ ]] || die "CLIENT_SLUG must be lowercase letters, digits and hyphens"
   export COMPOSE_PROJECT_NAME="lims-$CLIENT_SLUG"
   export COMPOSE_FILE="$DEPLOY_ROOT/compose/docker-compose.yml"
-  [ -n "${S3_IMAGE:-}" ] || die "Set S3_IMAGE in $CLIENT_DIR/deployment.env (see DECISIONS.md)"
+  use_storage_defaults
   BACKUP_DIR="${LIMS_BACKUP_DIR:-$CLIENT_DIR/backups}"
   export BACKUP_DIR
   # Folders provisioned before the owner credentials moved to migrate.env: split them now, so
@@ -52,6 +52,25 @@ load_client() {
   if [ -f "$CLIENT_DIR/secrets.env" ] && { [ ! -f "$CLIENT_DIR/migrate.env" ] || grep -q '^MIGRATION_DATABASE_URL=' "$CLIENT_DIR/generated.env" 2>/dev/null; }; then
     write_generated_env
   fi
+}
+
+# The store, when deployment.env names none. An install that names its own image keeps it, and its own command.
+DEFAULT_S3_IMAGE="versity/versitygw:v1.11.0"
+use_storage_defaults() {
+  S3_IMAGE="${S3_IMAGE:-$DEFAULT_S3_IMAGE}"
+  # --sidecar keeps each file's type and checksum in ordinary files. Without it they are filesystem attributes, which
+  # the tar in backup.sh does not carry: a restored PDF would come back as plain text.
+  case "$S3_IMAGE" in
+    versity/versitygw:*) S3_COMMAND="${S3_COMMAND:---port :9000 posix --sidecar /data/meta /data/objects}" ;;
+  esac
+  export S3_IMAGE S3_COMMAND="${S3_COMMAND:-server /data}"
+}
+
+# The store expects its folders to exist.
+prepare_storage() {
+  case "$S3_IMAGE" in
+    versity/versitygw:*) compose run --rm -T --no-deps --entrypoint sh minio -c 'mkdir -p /data/objects /data/meta' ;;
+  esac
 }
 
 compose() { docker compose --env-file "$CLIENT_DIR/secrets.env" --env-file "$CLIENT_DIR/versions.env" --env-file "$CLIENT_DIR/deployment.env" "$@"; }
@@ -108,6 +127,15 @@ ENABLE_AI_ASSISTANT="${ENABLE_AI_ASSISTANT:-}"
 AI_PROVIDER="${AI_PROVIDER:-}"
 AI_API_KEY="${AI_API_KEY:-}"
 AI_MODEL="${AI_MODEL:-}"
+AI_BASE_URL="${AI_BASE_URL:-}"
+AI_PRICE_INPUT="${AI_PRICE_INPUT:-}"
+AI_PRICE_OUTPUT="${AI_PRICE_OUTPUT:-}"
+AI_FALLBACK_PROVIDER="${AI_FALLBACK_PROVIDER:-}"
+AI_FALLBACK_MODEL="${AI_FALLBACK_MODEL:-}"
+AI_FALLBACK_API_KEY="${AI_FALLBACK_API_KEY:-}"
+AI_FALLBACK_BASE_URL="${AI_FALLBACK_BASE_URL:-}"
+AI_FALLBACK_PRICE_INPUT="${AI_FALLBACK_PRICE_INPUT:-}"
+AI_FALLBACK_PRICE_OUTPUT="${AI_FALLBACK_PRICE_OUTPUT:-}"
 EMBEDDING_PROVIDER="${EMBEDDING_PROVIDER:-}"
 EMBEDDING_API_KEY="${EMBEDDING_API_KEY:-}"
 EMBEDDING_MODEL="${EMBEDDING_MODEL:-}"
