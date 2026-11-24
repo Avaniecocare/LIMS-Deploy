@@ -1,6 +1,6 @@
 # LIMS-Deploy
 
-By [Taravik](https://taravik.com).
+By [Taravik](https://taravik.com). Proprietary: see [LICENSE](LICENSE).
 
 Everything needed to run the LIMS for a customer: production Compose files, a reverse proxy with TLS, and scripts for provisioning, deployment, migrations, backup, restore, upgrade and rollback. It contains no application source code.
 
