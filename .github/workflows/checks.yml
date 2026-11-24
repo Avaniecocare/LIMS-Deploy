@@ -42,7 +42,7 @@ jobs:
         run: sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL; df -h / | tail -1
       - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
       - name: A licence key for this run
-        run: node LIMS/scripts/licence.mjs keygen "$RUNNER_TEMP/key" >/dev/null
+        run: mkdir -p "$RUNNER_TEMP/key" && node LIMS/scripts/licence.mjs keygen "$RUNNER_TEMP/key" >/dev/null
       - name: Build the images
         env:
           NAME: ${{ matrix.name }}
