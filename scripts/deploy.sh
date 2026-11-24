@@ -7,6 +7,8 @@ parse_client_dir "$@"
 load_client
 [ -f "$CLIENT_DIR/secrets.env" ] || die "Not provisioned yet. Run scripts/provision.sh first."
 write_generated_env
+# The domains may have changed.
+"$DEPLOY_ROOT/scripts/proxy-sync.sh" --client-dir "$CLIENT_DIR"
 prepare_storage
 compose up -d --wait postgres redis minio
 compose run --rm migrate

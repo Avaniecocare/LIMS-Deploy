@@ -136,7 +136,7 @@ scripts/restore.sh --client-dir DIR --from BACKUP --yes [--keep-previous]
 
 1. Refuses another company's backup and verifies the checksums.
 2. Restores the dump into a temporary database, `lims_restore`, while the app keeps running, and checks it (tables present, migrations recorded, the app role can read it). If any of that fails, it stops: **the live database is never touched**.
-3. Stops the app and swaps the databases by renaming, in one transaction. The live database becomes `lims_pre_restore_<time>`.
+3. Stops the app and swaps the databases by renaming, in one transaction. The live database becomes `lims_pre_restore_<time>`. Sessions and queued jobs are cleared: everyone signs in again.
 4. Unpacks the files next to the live ones in the storage volume, then swaps them in (the volume needs room for both copies for a moment).
 5. Runs migrations, because the backup may predate the current images, then starts the app and waits for it to be healthy.
 6. Drops `lims_pre_restore_<time>`, unless `--keep-previous`. If step 5 fails, it is kept and the script prints the command that puts it back.
@@ -163,7 +163,9 @@ Run this on a machine with Docker before trusting a new version or `S3_IMAGE`:
 LIMS_VERSION=0.1.0 LIMS_UI_VERSION=0.1.0 NEXT_LIMS_VERSION=0.2.0 S3_IMAGE=... LIMS_S3_ACCESS_KEY=... LIMS_S3_SECRET_KEY=... scripts/lifecycle-check.sh
 ```
 
-It provisions two fictional companies, does real work through the images (first-run setup, sign-in, a PDF rendered by the worker and stored), then checks isolation, backup, restore, upgrade and rollback, and removes everything.
+`scripts/env-check.sh` proves that settings with awkward characters reach the app unchanged.
+
+`lifecycle-check.sh` provisions two fictional companies, does real work through the images (first-run setup, sign-in, a PDF rendered by the worker and stored), then checks isolation, backup, restore, upgrade and rollback, and removes everything.
 
 ## Upgrades and rollback
 

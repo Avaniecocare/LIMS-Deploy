@@ -116,6 +116,10 @@ swap_back_hint() {
   printf '  docker exec %s-postgres-1 psql -U lims_owner -d postgres -c "ALTER DATABASE lims RENAME TO lims_failed_%s" -c "ALTER DATABASE %s RENAME TO lims"\n' "$COMPOSE_PROJECT_NAME" "$stamp" "$prev_db" >&2
 }
 
+# Sessions and queued jobs belong to the data that was there. The app queues again whatever still needs doing.
+# shellcheck disable=SC2016 # expanded inside the container, not here
+compose exec -T redis sh -c 'redis-cli -a "$REDIS_PASSWORD" --no-auth-warning FLUSHALL' >/dev/null
+
 # --- 3. files: unpack beside the live ones, then swap -------------------------------------------
 log "Restoring files"
 compose stop minio
