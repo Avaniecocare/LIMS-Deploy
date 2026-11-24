@@ -95,7 +95,7 @@ services:
         required: false
       - ${CLIENT_DIR}/generated.env
       - ${CLIENT_DIR}/migrate.env
-    command: ['sh', '-c', 'DATABASE_URL="$$MIGRATION_DATABASE_URL" exec npx --no-install prisma migrate deploy']
+    command: ['sh', '-c', 'DATABASE_URL="$$MIGRATION_DATABASE_URL" exec node_modules/.bin/prisma migrate deploy']
     depends_on:
       postgres: { condition: service_healthy }
 
