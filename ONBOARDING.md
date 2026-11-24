@@ -22,7 +22,7 @@ cp deployment.env.example /srv/lims-clients/$SLUG/deployment.env
 cp versions.env.example   /srv/lims-clients/$SLUG/versions.env
 ```
 
-Fill in both files. Double-quote every value. Leave `S3_IMAGE` empty for the tested default store; see [DECISIONS.md](DECISIONS.md). There is no `company.env` for a new laboratory.
+Fill in both files. Double-quote every value, or single-quote one that holds `$`, `"`, a backtick or a backslash. Leave `S3_IMAGE` empty for the tested default store; see [DECISIONS.md](DECISIONS.md). There is no `company.env` for a new laboratory.
 
 ## 3. Point DNS
 
@@ -42,6 +42,8 @@ Store a copy of `secrets.env` in your secrets store. If the folder is lost, the 
 ## 5. First administrator
 
 Open `https://<app domain>`. The first-run screen asks for the `SETUP_TOKEN` from `secrets.env`, then creates the first administrator and the lab's operating settings (GST rate, credit days, working days, retention, terms). Give the administrator their sign-in.
+
+If the images need a licence, put it in `LICENCE` in `deployment.env` before provisioning, or paste it into **Admin → Licence** now. Until then nothing but the setup can be saved.
 
 ## 6. The lab's setup wizard
 
