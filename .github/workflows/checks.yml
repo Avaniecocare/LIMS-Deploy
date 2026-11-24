@@ -7,6 +7,9 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
+env:
+  # Needed only if the repositories are private: a token that can read LIMS and LIMS-UI.
+  TOKEN: ${{ secrets.LIMS_READ_TOKEN || github.token }}
 concurrency:
   group: checks-${{ github.ref }}
   cancel-in-progress: true
@@ -29,13 +32,13 @@ jobs:
         id: ref
         run: |
           for r in LIMS LIMS-UI; do
-            if git ls-remote --exit-code --heads "https://github.com/$GITHUB_REPOSITORY_OWNER/$r.git" "$GITHUB_REF_NAME" >/dev/null; then ref="$GITHUB_REF_NAME"; else ref=main; fi
+            if git ls-remote --exit-code --heads "https://x-access-token:$TOKEN@github.com/$GITHUB_REPOSITORY_OWNER/$r.git" "$GITHUB_REF_NAME" >/dev/null; then ref="$GITHUB_REF_NAME"; else ref=main; fi
             echo "$r=$ref" >> "$GITHUB_OUTPUT"
           done
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-        with: { repository: '${{ github.repository_owner }}/LIMS', ref: '${{ steps.ref.outputs.LIMS }}', path: LIMS }
+        with: { repository: '${{ github.repository_owner }}/LIMS', ref: '${{ steps.ref.outputs.LIMS }}', path: LIMS, token: '${{ env.TOKEN }}' }
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-        with: { repository: '${{ github.repository_owner }}/LIMS-UI', ref: '${{ steps.ref.outputs.LIMS-UI }}', path: LIMS-UI, fetch-depth: 0 }
+        with: { repository: '${{ github.repository_owner }}/LIMS-UI', ref: '${{ steps.ref.outputs.LIMS-UI }}', path: LIMS-UI, fetch-depth: 0, token: '${{ env.TOKEN }}' }
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with: { node-version: 24 }
       - name: Room for the images
@@ -75,7 +78,7 @@ jobs:
         with: { path: LIMS-Deploy }
       - name: The app's source
         run: |
-          git clone -q --depth 1 -b "$GITHUB_REF_NAME" "https://github.com/$GITHUB_REPOSITORY_OWNER/LIMS.git" LIMS || git clone -q --depth 1 "https://github.com/$GITHUB_REPOSITORY_OWNER/LIMS.git" LIMS
+          git clone -q --depth 1 -b "$GITHUB_REF_NAME" "https://x-access-token:$TOKEN@github.com/$GITHUB_REPOSITORY_OWNER/LIMS.git" LIMS || git clone -q --depth 1 "https://x-access-token:$TOKEN@github.com/$GITHUB_REPOSITORY_OWNER/LIMS.git" LIMS
       - name: Its queries are valid, and use metrics the app has
         run: |
           python3 LIMS-Deploy/monitoring/dashboard-check.py LIMS > rules.yaml
