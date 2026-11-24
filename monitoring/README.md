@@ -5,6 +5,8 @@ The API and the worker serve health and Prometheus metrics on the operations por
 | File | What it is |
 | --- | --- |
 | `alerts.yaml` | What to be woken for, what it means for the lab, and what to do first |
+| `dashboard.json` | A Grafana dashboard: import it and choose the Prometheus data source |
+| `dashboard-check.py` | Checks its queries, and that the app has every metric they use |
 | `alerts-test.yaml` | Tests for the rules: `promtool test rules alerts-test.yaml` |
 
 ## Scraping

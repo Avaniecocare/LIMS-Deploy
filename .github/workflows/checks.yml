@@ -1,0 +1,88 @@
+# The long checks, on GitHub's machines: each builds the images from source (the branch of the same name, or main) and
+# uses them the way a customer would. Nothing is published, and the licence key is made for the run and thrown away.
+name: Checks
+on:
+  push:
+    branches: [main, 'build/**']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: checks-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  check:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: trial, timeout: 60 }
+          - { name: lifecycle, timeout: 60 }
+          - { name: kubernetes, timeout: 60 }
+    name: ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    timeout-minutes: ${{ matrix.timeout }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with: { path: LIMS-Deploy }
+      - name: The branches to build
+        id: ref
+        run: |
+          for r in LIMS LIMS-UI; do
+            if git ls-remote --exit-code --heads "https://github.com/$GITHUB_REPOSITORY_OWNER/$r.git" "$GITHUB_REF_NAME" >/dev/null; then ref="$GITHUB_REF_NAME"; else ref=main; fi
+            echo "$r=$ref" >> "$GITHUB_OUTPUT"
+          done
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with: { repository: '${{ github.repository_owner }}/LIMS', ref: '${{ steps.ref.outputs.LIMS }}', path: LIMS }
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with: { repository: '${{ github.repository_owner }}/LIMS-UI', ref: '${{ steps.ref.outputs.LIMS-UI }}', path: LIMS-UI, fetch-depth: 0 }
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with: { node-version: 24 }
+      - name: Room for the images
+        run: sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL; df -h / | tail -1
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+      - name: A licence key for this run
+        run: node LIMS/scripts/licence.mjs keygen "$RUNNER_TEMP/key" >/dev/null
+      - name: Build the images
+        env:
+          NAME: ${{ matrix.name }}
+        run: |
+          key=''; [ "$NAME" != trial ] || key="$(cat "$RUNNER_TEMP/key/licence.pub")"
+          docker buildx build --load -t ghcr.io/avaniecocare/lims:check --build-arg "LICENCE_PUBLIC_KEY=$key" LIMS
+          docker buildx build --load -t ghcr.io/avaniecocare/lims-ui:check LIMS-UI
+      - name: Trial package
+        if: matrix.name == 'trial'
+        env: { LIMS_VERSION: check, LIMS_UI_VERSION: check, LICENCE_TOOL: '${{ github.workspace }}/LIMS/scripts/licence.mjs' }
+        run: LICENCE_KEY="$RUNNER_TEMP/key/licence.key" node LIMS-Deploy/scripts/trial-check.mjs
+      - name: Two companies on a server, through backup, restore, upgrade and rollback
+        if: matrix.name == 'lifecycle'
+        env: { LIMS_VERSION: check, LIMS_UI_VERSION: check, NEXT_LIMS_VERSION: check2, S3_IMAGE: 'versity/versitygw:v1.11.0' }
+        run: |
+          docker tag ghcr.io/avaniecocare/lims:check ghcr.io/avaniecocare/lims:check2
+          LIMS-Deploy/scripts/lifecycle-check.sh
+      - name: Kubernetes
+        if: matrix.name == 'kubernetes'
+        env: { K3S_IMAGE: 'rancher/k3s:v1.36.6-k3s1' }
+        run: |
+          docker tag ghcr.io/avaniecocare/lims:check ghcr.io/avaniecocare/lims:k8s-test
+          docker tag ghcr.io/avaniecocare/lims-ui:check ghcr.io/avaniecocare/lims-ui:k8s-test
+          for i in postgres:18-alpine redis:8-alpine versity/versitygw:v1.11.0; do docker pull -q "$i"; done
+          LIMS-Deploy/kubernetes/check.sh
+  dashboard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with: { path: LIMS-Deploy }
+      - name: The app's source
+        run: |
+          git clone -q --depth 1 -b "$GITHUB_REF_NAME" "https://github.com/$GITHUB_REPOSITORY_OWNER/LIMS.git" LIMS || git clone -q --depth 1 "https://github.com/$GITHUB_REPOSITORY_OWNER/LIMS.git" LIMS
+      - name: Its queries are valid, and use metrics the app has
+        run: |
+          python3 LIMS-Deploy/monitoring/dashboard-check.py LIMS > rules.yaml
+          docker run --rm -v "$PWD:/w:ro" --entrypoint promtool prom/prometheus:v3.7.0 check rules /w/rules.yaml
+      - name: Grafana accepts it
+        run: |
+          docker run -d --name grafana -p 127.0.0.1:3000:3000 grafana/grafana:12.3.0 >/dev/null
+          timeout 120 sh -c 'until curl -sf http://localhost:3000/api/health >/dev/null; do sleep 2; done'
+          jq '{dashboard: (. + {id: null}), overwrite: true}' LIMS-Deploy/monitoring/dashboard.json |
+            curl -sS --fail-with-body -u admin:admin -H 'Content-Type: application/json' -d @- http://localhost:3000/api/dashboards/db

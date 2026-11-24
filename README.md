@@ -15,6 +15,6 @@ This repository is public. `clients/` holds only `_template/` and fictional exam
 
 Provisioning installs a nightly backup of each company's database, files and settings, which can be encrypted (age or gpg) and copied off-site; see [DEPLOYMENT.md](DEPLOYMENT.md#backups).
 
-`scripts/lifecycle-check.sh` runs the whole operational lifecycle on two fictional companies, and `scripts/white-label-check.sh` confirms one image serves both.
+The `Checks` workflow runs the trial package, `scripts/lifecycle-check.sh` and the Kubernetes check on GitHub, on images it builds from source. `scripts/lifecycle-check.sh` runs the whole operational lifecycle on two fictional companies, and `scripts/white-label-check.sh` confirms one image serves both.
 
 Git hooks: `git config core.hooksPath .githooks` (needs gitleaks).

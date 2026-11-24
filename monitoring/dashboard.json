@@ -1,0 +1,895 @@
+{
+ "uid": "lims",
+ "title": "LIMS",
+ "tags": [
+  "lims"
+ ],
+ "timezone": "browser",
+ "schemaVersion": 39,
+ "refresh": "1m",
+ "time": {
+  "from": "now-6h",
+  "to": "now"
+ },
+ "editable": true,
+ "templating": {
+  "list": [
+   {
+    "name": "datasource",
+    "type": "datasource",
+    "query": "prometheus",
+    "label": "Data source"
+   },
+   {
+    "name": "namespace",
+    "type": "query",
+    "label": "Company",
+    "datasource": {
+     "type": "prometheus",
+     "uid": "${datasource}"
+    },
+    "query": {
+     "query": "label_values(up{job=\"lims\"}, namespace)",
+     "refId": "n"
+    },
+    "includeAll": true,
+    "multi": true,
+    "current": {
+     "text": "All",
+     "value": "$__all"
+    },
+    "refresh": 2
+   }
+  ]
+ },
+ "panels": [
+  {
+   "id": 1,
+   "title": "API copies up",
+   "type": "stat",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "${datasource}"
+   },
+   "gridPos": {
+    "x": 0,
+    "y": 0,
+    "w": 4,
+    "h": 7
+   },
+   "description": "",
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "sum by (namespace) (up{job=\"lims\",app=\"api\",namespace=~\"$namespace\"})",
+     "legendFormat": "{{namespace}}",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "${datasource}"
+     }
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "red",
+        "value": null
+       },
+       {
+        "color": "green",
+        "value": 1
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ]
+    },
+    "colorMode": "background",
+    "textMode": "value_and_name"
+   }
+  },
+  {
+   "id": 2,
+   "title": "Workers up",
+   "type": "stat",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "${datasource}"
+   },
+   "gridPos": {
+    "x": 4,
+    "y": 0,
+    "w": 4,
+    "h": 7
+   },
+   "description": "",
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "sum by (namespace) (up{job=\"lims\",app=\"worker\",namespace=~\"$namespace\"})",
+     "legendFormat": "{{namespace}}",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "${datasource}"
+     }
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "red",
+        "value": null
+       },
+       {
+        "color": "green",
+        "value": 1
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ]
+    },
+    "colorMode": "background",
+    "textMode": "value_and_name"
+   }
+  },
+  {
+   "id": 3,
+   "title": "Read-only",
+   "type": "stat",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "${datasource}"
+   },
+   "gridPos": {
+    "x": 8,
+    "y": 0,
+    "w": 4,
+    "h": 7
+   },
+   "description": "1 when the licence has ended and nothing can be saved",
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "max by (namespace) (lims_read_only{namespace=~\"$namespace\"})",
+     "legendFormat": "{{namespace}}",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "${datasource}"
+     }
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       },
+       {
+        "color": "red",
+        "value": 1
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ]
+    },
+    "colorMode": "background",
+    "textMode": "value_and_name"
+   }
+  },
+  {
+   "id": 4,
+   "title": "Licence days left",
+   "type": "stat",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "${datasource}"
+   },
+   "gridPos": {
+    "x": 12,
+    "y": 0,
+    "w": 4,
+    "h": 7
+   },
+   "description": "",
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "min by (namespace, kind) (lims_licence_days_left{namespace=~\"$namespace\"})",
+     "legendFormat": "{{namespace}} {{kind}}",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "${datasource}"
+     }
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "red",
+        "value": null
+       },
+       {
+        "color": "orange",
+        "value": 4
+       },
+       {
+        "color": "green",
+        "value": 15
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ]
+    },
+    "colorMode": "background",
+    "textMode": "value_and_name"
+   }
+  },
+  {
+   "id": 5,
+   "title": "Emails failed, last day",
+   "type": "stat",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "${datasource}"
+   },
+   "gridPos": {
+    "x": 16,
+    "y": 0,
+    "w": 4,
+    "h": 7
+   },
+   "description": "",
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "max by (namespace) (lims_emails_failed{namespace=~\"$namespace\"})",
+     "legendFormat": "{{namespace}}",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "${datasource}"
+     }
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       },
+       {
+        "color": "red",
+        "value": 1
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ]
+    },
+    "colorMode": "background",
+    "textMode": "value_and_name"
+   }
+  },
+  {
+   "id": 6,
+   "title": "PDFs and exports failed, last day",
+   "type": "stat",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "${datasource}"
+   },
+   "gridPos": {
+    "x": 20,
+    "y": 0,
+    "w": 4,
+    "h": 7
+   },
+   "description": "",
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "max by (namespace) (lims_documents_failed{namespace=~\"$namespace\"})",
+     "legendFormat": "{{namespace}}",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "${datasource}"
+     }
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       },
+       {
+        "color": "orange",
+        "value": 1
+       },
+       {
+        "color": "red",
+        "value": 4
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ]
+    },
+    "colorMode": "background",
+    "textMode": "value_and_name"
+   }
+  },
+  {
+   "id": 7,
+   "title": "Requests",
+   "type": "timeseries",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "${datasource}"
+   },
+   "gridPos": {
+    "x": 0,
+    "y": 7,
+    "w": 8,
+    "h": 7
+   },
+   "description": "",
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "sum by (namespace) (rate(lims_http_request_duration_seconds_count{namespace=~\"$namespace\"}[5m]))",
+     "legendFormat": "{{namespace}}",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "${datasource}"
+     }
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "reqps"
+    },
+    "overrides": []
+   },
+   "options": {}
+  },
+  {
+   "id": 8,
+   "title": "Slowest 5% of requests",
+   "type": "timeseries",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "${datasource}"
+   },
+   "gridPos": {
+    "x": 8,
+    "y": 7,
+    "w": 8,
+    "h": 7
+   },
+   "description": "95th percentile. The alert fires above 2 seconds for 10 minutes",
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "histogram_quantile(0.95, sum by (namespace, le) (rate(lims_http_request_duration_seconds_bucket{namespace=~\"$namespace\",route!~\".*/help/.*\"}[5m])))",
+     "legendFormat": "{{namespace}}",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "${datasource}"
+     }
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "s"
+    },
+    "overrides": []
+   },
+   "options": {}
+  },
+  {
+   "id": 9,
+   "title": "Server errors",
+   "type": "timeseries",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "${datasource}"
+   },
+   "gridPos": {
+    "x": 16,
+    "y": 7,
+    "w": 8,
+    "h": 7
+   },
+   "description": "",
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "sum by (namespace) (rate(lims_http_request_duration_seconds_count{namespace=~\"$namespace\",status=~\"5..\"}[5m]))",
+     "legendFormat": "{{namespace}}",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "${datasource}"
+     }
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "reqps"
+    },
+    "overrides": []
+   },
+   "options": {}
+  },
+  {
+   "id": 10,
+   "title": "Slowest screens",
+   "type": "timeseries",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "${datasource}"
+   },
+   "gridPos": {
+    "x": 0,
+    "y": 14,
+    "w": 12,
+    "h": 7
+   },
+   "description": "",
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "topk(10, histogram_quantile(0.95, sum by (route, le) (rate(lims_http_request_duration_seconds_bucket{namespace=~\"$namespace\",route!~\".*/help/.*\"}[15m]))))",
+     "legendFormat": "{{route}}",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "${datasource}"
+     }
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "s"
+    },
+    "overrides": []
+   },
+   "options": {}
+  },
+  {
+   "id": 11,
+   "title": "Jobs waiting",
+   "type": "timeseries",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "${datasource}"
+   },
+   "gridPos": {
+    "x": 12,
+    "y": 14,
+    "w": 6,
+    "h": 7
+   },
+   "description": "",
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "sum by (namespace, queue) (lims_queue_jobs{namespace=~\"$namespace\",state=\"waiting\"})",
+     "legendFormat": "{{namespace}} {{queue}}",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "${datasource}"
+     }
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short"
+    },
+    "overrides": []
+   },
+   "options": {}
+  },
+  {
+   "id": 12,
+   "title": "Oldest job waiting",
+   "type": "timeseries",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "${datasource}"
+   },
+   "gridPos": {
+    "x": 18,
+    "y": 14,
+    "w": 6,
+    "h": 7
+   },
+   "description": "",
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "max by (namespace, queue) (lims_queue_oldest_waiting_seconds{namespace=~\"$namespace\"})",
+     "legendFormat": "{{namespace}} {{queue}}",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "${datasource}"
+     }
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "s"
+    },
+    "overrides": []
+   },
+   "options": {}
+  },
+  {
+   "id": 13,
+   "title": "Jobs finished",
+   "type": "timeseries",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "${datasource}"
+   },
+   "gridPos": {
+    "x": 0,
+    "y": 21,
+    "w": 8,
+    "h": 7
+   },
+   "description": "",
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "sum by (queue, result) (rate(lims_jobs_total{namespace=~\"$namespace\"}[15m]))",
+     "legendFormat": "{{queue}} {{result}}",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "${datasource}"
+     }
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "ops"
+    },
+    "overrides": []
+   },
+   "options": {}
+  },
+  {
+   "id": 14,
+   "title": "How long jobs take",
+   "type": "timeseries",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "${datasource}"
+   },
+   "gridPos": {
+    "x": 8,
+    "y": 21,
+    "w": 8,
+    "h": 7
+   },
+   "description": "",
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "histogram_quantile(0.95, sum by (queue, le) (rate(lims_job_duration_seconds_bucket{namespace=~\"$namespace\"}[15m])))",
+     "legendFormat": "{{queue}}",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "${datasource}"
+     }
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "s"
+    },
+    "overrides": []
+   },
+   "options": {}
+  },
+  {
+   "id": 15,
+   "title": "Since scheduled tasks last ran",
+   "type": "timeseries",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "${datasource}"
+   },
+   "gridPos": {
+    "x": 16,
+    "y": 21,
+    "w": 8,
+    "h": 7
+   },
+   "description": "",
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "time() - max by (namespace, task) (lims_scheduled_task_last_success_timestamp_seconds{namespace=~\"$namespace\"})",
+     "legendFormat": "{{namespace}} {{task}}",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "${datasource}"
+     }
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "s"
+    },
+    "overrides": []
+   },
+   "options": {}
+  },
+  {
+   "id": 16,
+   "title": "GST documents not registered",
+   "type": "timeseries",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "${datasource}"
+   },
+   "gridPos": {
+    "x": 0,
+    "y": 28,
+    "w": 8,
+    "h": 7
+   },
+   "description": "",
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "max by (namespace, reason) (lims_einvoices_unregistered{namespace=~\"$namespace\"})",
+     "legendFormat": "{{namespace}} {{reason}}",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "${datasource}"
+     }
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short"
+    },
+    "overrides": []
+   },
+   "options": {}
+  },
+  {
+   "id": 17,
+   "title": "WhatsApp failed, last day",
+   "type": "timeseries",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "${datasource}"
+   },
+   "gridPos": {
+    "x": 8,
+    "y": 28,
+    "w": 8,
+    "h": 7
+   },
+   "description": "",
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "max by (namespace) (lims_whatsapp_failed{namespace=~\"$namespace\"})",
+     "legendFormat": "{{namespace}}",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "${datasource}"
+     }
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short"
+    },
+    "overrides": []
+   },
+   "options": {}
+  },
+  {
+   "id": 18,
+   "title": "Memory",
+   "type": "timeseries",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "${datasource}"
+   },
+   "gridPos": {
+    "x": 16,
+    "y": 28,
+    "w": 8,
+    "h": 7
+   },
+   "description": "",
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "process_resident_memory_bytes{job=\"lims\",namespace=~\"$namespace\"}",
+     "legendFormat": "{{namespace}} {{app}}",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "${datasource}"
+     }
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "bytes"
+    },
+    "overrides": []
+   },
+   "options": {}
+  },
+  {
+   "id": 19,
+   "title": "Ask AI answers",
+   "type": "timeseries",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "${datasource}"
+   },
+   "gridPos": {
+    "x": 0,
+    "y": 35,
+    "w": 8,
+    "h": 7
+   },
+   "description": "",
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "sum by (outcome) (rate(lims_help_answers_total{namespace=~\"$namespace\"}[1h]))",
+     "legendFormat": "{{outcome}}",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "${datasource}"
+     }
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "ops"
+    },
+    "overrides": []
+   },
+   "options": {}
+  },
+  {
+   "id": 20,
+   "title": "Ask AI spending, last day",
+   "type": "timeseries",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "${datasource}"
+   },
+   "gridPos": {
+    "x": 8,
+    "y": 35,
+    "w": 8,
+    "h": 7
+   },
+   "description": "",
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "sum by (namespace, model) (increase(lims_help_cost_dollars_total{namespace=~\"$namespace\"}[1d]))",
+     "legendFormat": "{{namespace}} {{model}}",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "${datasource}"
+     }
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "currencyUSD"
+    },
+    "overrides": []
+   },
+   "options": {}
+  },
+  {
+   "id": 21,
+   "title": "Ask AI provider errors",
+   "type": "timeseries",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "${datasource}"
+   },
+   "gridPos": {
+    "x": 16,
+    "y": 35,
+    "w": 8,
+    "h": 7
+   },
+   "description": "",
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "sum by (provider) (increase(lims_help_provider_errors_total{namespace=~\"$namespace\"}[15m]))",
+     "legendFormat": "{{provider}}",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "${datasource}"
+     }
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short"
+    },
+    "overrides": []
+   },
+   "options": {}
+  }
+ ]
+}
