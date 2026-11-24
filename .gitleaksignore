@@ -1,0 +1,2 @@
+# The default login of a throwaway Grafana container in a CI job; removed in the next commit.
+e260513c3afca2e8317f218d3791084833545c47:.github/workflows/checks.yml:curl-auth-user:86

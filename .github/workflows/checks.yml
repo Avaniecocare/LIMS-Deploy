@@ -82,7 +82,7 @@ jobs:
           docker run --rm -v "$PWD:/w:ro" --entrypoint promtool prom/prometheus:v3.7.0 check rules /w/rules.yaml
       - name: Grafana accepts it
         run: |
-          docker run -d --name grafana -p 127.0.0.1:3000:3000 grafana/grafana:12.3.0 >/dev/null
+          docker run -d --name grafana -p 127.0.0.1:3000:3000 -e GF_AUTH_ANONYMOUS_ENABLED=true -e GF_AUTH_ANONYMOUS_ORG_ROLE=Admin grafana/grafana:12.3.0 >/dev/null
           timeout 120 sh -c 'until curl -sf http://localhost:3000/api/health >/dev/null; do sleep 2; done'
           jq '{dashboard: (. + {id: null}), overwrite: true}' LIMS-Deploy/monitoring/dashboard.json |
-            curl -sS --fail-with-body -u admin:admin -H 'Content-Type: application/json' -d @- http://localhost:3000/api/dashboards/db
+            curl -sS --fail-with-body -H 'Content-Type: application/json' -d @- http://localhost:3000/api/dashboards/db
