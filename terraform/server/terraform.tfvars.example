@@ -1,0 +1,8 @@
+# Copy to terraform.tfvars (git-ignored) and fill in.
+oncall_emails = ["oncall@example.com"]
+
+# t4g.large (8 GB) for 1-2 companies, t4g.xlarge (16 GB) for 3-5.
+instance_type = "t4g.large"
+
+# Each company's API host, once its DNS points at the server.
+health_check_hosts = []

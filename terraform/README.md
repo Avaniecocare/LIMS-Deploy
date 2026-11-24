@@ -1,23 +1,31 @@
 # Production on AWS (Terraform)
 
-AWS Mumbai (`ap-south-1`) with disaster copies in Hyderabad (`ap-south-2`). Kubernetes (EKS) on ARM nodes in two availability zones and private subnets, PostgreSQL on RDS Multi-AZ, one load balancer with a web firewall, one S3 bucket per company with versioning, Object Lock and a Hyderabad copy, AWS Backup, alarms, and a role per repository that pushes images.
+| | [server/](server/README.md) | prod/ |
+| --- | --- | --- |
+| What | One ARM server, Docker Compose | Kubernetes (EKS) over two zones, PostgreSQL Multi-AZ, load balancer with a web firewall |
+| Companies | Up to about 5 | More, with a namespace, identity and bucket each |
+| If a machine or zone fails | Restarted by AWS, or rebuilt by hand in an hour or two | Carries on |
+| US dollars a month | About 85-165 | About 340-380, and more per company |
 
-What runs in the cluster is in [../kubernetes](../kubernetes/README.md). Adding a company: [../docs/aws/companies.md](../docs/aws/companies.md).
+Use `server/` while the budget is 200 a month: EKS's control plane, load balancer, NAT gateway and Multi-AZ database alone cost more than that before a single node. Moving later means restoring each company's backup into the other.
 
-**Nothing here has been applied to a real account yet.** It is validated and planned against mocked AWS only. If an earlier version was applied, read the plan with care before applying: the app servers and ElastiCache go, and each company's target groups and secrets are new.
+**Nothing here has been applied to a real account yet.** It is validated and planned against mocked AWS only.
+
+The rest of this page is what the two share, and `prod/`: AWS Mumbai (`ap-south-1`) with disaster copies in Hyderabad (`ap-south-2`), one S3 bucket per company with versioning, Object Lock and a Hyderabad copy, AWS Backup, alarms, and a role per repository that pushes images. What runs in the cluster is in [../kubernetes](../kubernetes/README.md). Adding a company: [../docs/aws/companies.md](../docs/aws/companies.md).
 
 ## Layout
 
 | Path | What it is |
 | --- | --- |
 | `bootstrap/` | Run once: the S3 bucket that holds the state |
-| `prod/` | Everything else; run from here |
+| `account/` | Run once: CloudTrail, GuardDuty, Access Analyzer and the budget, for either setup |
+| `server/` | One server, with Docker Compose |
+| `prod/` | Kubernetes |
 | `modules/lab/` | A company's buckets, secrets, pods' identity, routing, uptime checks and alarms |
-| `prod/tests/` | `terraform test`: plans the whole setup against mocked AWS, no account needed |
+| `*/tests/` | `terraform test`: plans each setup against mocked AWS, no account needed |
 
 | File in `prod/` | What and why |
 | --- | --- |
-| `account.tf` | CloudTrail, GuardDuty, Access Analyzer, budget: knowing who did what, and what it costs |
 | `network.tf` | VPC, subnets, NAT, S3 endpoint, flow logs, security groups. The database has no internet route at all |
 | `eks.tf` | The cluster, its nodes, its add-ons, and the AWS roles of what runs in it |
 | `data.tf` | RDS |
@@ -40,14 +48,14 @@ What runs in the cluster is in [../kubernetes](../kubernetes/README.md). Adding 
 ```sh
 # Credentials: an Identity Center admin session
 cd terraform/bootstrap && terraform init && terraform apply
-cd ../prod
+cd ../account                                       # then the same four lines in ../server, or in ../prod
 cp backend.hcl.example backend.hcl                  # fill in the account id
 cp terraform.tfvars.example terraform.tfvars        # fill in; real values stay out of git
 terraform init -backend-config=backend.hcl
 terraform plan -out=tfplan && terraform apply tfplan
 ```
 
-Then, once per cluster, what the manifests rely on:
+<a id="kubernetes"></a>For `prod/`, once per cluster, what the manifests rely on:
 
 ```sh
 aws eks update-kubeconfig --name lims-prod --region ap-south-1
@@ -73,14 +81,14 @@ Database passwords, session secrets, cache passwords and setup tokens are epheme
 ## Checking changes without an AWS account
 
 ```sh
-cd terraform/prod
+cd terraform/server      # or account, or prod
 terraform fmt -recursive -check ..
 terraform init -backend=false && terraform validate && terraform test
 ```
 
-With no local Terraform: `docker run --rm -v "$PWD/..:/w" -w /w/prod hashicorp/terraform:1.13 test`.
+With no local Terraform: `docker run --rm -v "$PWD/..:/w" -w /w/server hashicorp/terraform:1.13 test`.
 
-## Cost
+## Cost of `prod/`
 
 US dollars a month for the first company, on demand, 730 hours, from AWS's Mumbai price list of 1 November 2026:
 

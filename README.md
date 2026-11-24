@@ -6,6 +6,7 @@ This repository is public. `clients/` holds only `_template/` and fictional exam
 
 - [docker-compose/](docker-compose/README.md): a trial or small installation, started with one command
 - [kubernetes/](kubernetes/README.md): production on Kubernetes, a namespace per company
+- [terraform/](terraform/README.md): AWS, as [one server](terraform/server/README.md) (about 85-165 US dollars a month) or on Kubernetes
 - [monitoring/](monitoring/README.md): metrics and alerts
 - [DEPLOYMENT.md](DEPLOYMENT.md): how a server for several companies is set up and operated
 - [ONBOARDING.md](ONBOARDING.md): adding a new company

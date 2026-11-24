@@ -12,8 +12,22 @@
 - **No generic service names across the shared proxy network.** The app reaches storage through a per-company alias; the proxy uses unique container names.
 - **Secrets are generated on the server** and never leave the company's folder unless you copy them to your secrets store.
 
+## Settings files
+- **`generated.env` is written with Compose's own escapes,** not the shell's: a mail password with `$`, a quote or a backslash arrives as typed. `scripts/env-check.sh` proves it through Compose.
+- **`restore.sh` empties Redis:** sessions and queued jobs belong to the data that was replaced. Everyone signs in again.
+- **`deploy.sh` also writes the proxy's site,** so a changed domain takes effect.
+
 ## GST e-invoicing
 - **`EINVOICE_*` are deployment settings, written into `generated.env`** like the WhatsApp and assistant settings. They hold the lab's e-invoice API credentials, so they belong in the company's `deployment.env` (outside this repository), never in git. The module stays off in the app until an Admin turns it on.
+
+## One server on AWS
+- **The budget is 200 US dollars a month, so one server with Docker Compose** (`terraform/server`). EKS cannot fit: its fixed parts cost more than that before any node. `terraform/prod` stays for when it can be afforded.
+- **PostgreSQL on the server, not RDS.** The Compose set-up is the one tested end to end. Hourly snapshots of the data disk and nightly locked copies in another region stand in for point-in-time recovery: up to an hour can be lost.
+- **Everything on one data disk, Docker's image store included** (`containerd-snapshotter` off), so a replaced server finds its containers, images and volumes and starts them.
+- **The server can add off-site backups and nothing else;** Object Lock in compliance mode keeps them whoever asks.
+- **CPU credits are `standard`:** a busy spell slows the server instead of adding to the bill.
+- **A short script sends the figures, not the CloudWatch agent:** it also knows about unhealthy containers and the age of each company's backup.
+- **CloudTrail, GuardDuty and the budget are their own stack** (`terraform/account`), so either setup can be used or both during a move.
 
 ## Production on AWS (Terraform)
 - **EKS replaces the EC2 servers.** The servers shared one role that could read every company's files and secrets, one unhealthy company could take the others down, and their start-up script was never written. Pods get one company's identity each.
@@ -22,7 +36,7 @@
 - **Per-company database roles** (`lims_<slug>_owner`, `lims_<slug>_app`): one RDS instance serves every company and role names are instance-wide. A company that must have its own instance needs its own copy of this setup.
 - **Nodes in private subnets behind one NAT gateway,** two when outgoing calls must survive losing a zone. The database has no internet route.
 - **Secrets never enter the plan or the state** (ephemeral values, write-only arguments). Integration secrets are added by hand to the same secret.
-- **The pods may read and write their files and delete nothing.** Versions and the Hyderabad copy are the backup.
+- **The pods may read and write their files and delete nothing but data exports,** which are copies. Versions and the Hyderabad copy are the backup.
 - **Certificates at the top level, not in the company module,** because the HTTPS listener needs the first company's certificate before any company's routing rules can attach to it.
 - **Release images are never swept from ECR:** a company may be running any of them.
 - **`terraform test` plans the whole setup against mocked AWS,** in CI.

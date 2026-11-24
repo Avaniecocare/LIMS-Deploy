@@ -92,7 +92,6 @@ mock_provider "aws" {
 variables {
   github_org              = "example"
   oncall_emails           = ["oncall@example.com"]
-  budget_emails           = ["accounts@example.com"]
   cluster_admin_role_arns = ["arn:aws:iam::123456789012:role/admin"]
   admin_cidrs             = ["203.0.113.0/24"]
   labs = {

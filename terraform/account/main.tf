@@ -1,5 +1,35 @@
-# Step 1: the account's own protections. IAM Identity Center, root MFA and the opt-in of the Hyderabad region are
-# done by hand first.
+# The account's own protections, applied once whichever setup runs in it: who did what (CloudTrail), threats
+# (GuardDuty), anything shared outside (Access Analyzer), and what it costs (budget). IAM Identity Center, root MFA and
+# the opt-in of the Hyderabad region are done by hand first.
+terraform {
+  required_version = ">= 1.11"
+  required_providers {
+    aws = { source = "hashicorp/aws", version = "~> 6.0" }
+  }
+  backend "s3" {}
+}
+
+provider "aws" {
+  region = var.region
+  default_tags { tags = { Project = "lims", Lab = "shared", ManagedBy = "terraform" } }
+}
+
+variable "region" {
+  type    = string
+  default = "ap-south-1"
+}
+
+variable "budget_monthly_usd" {
+  description = "What the whole account may cost in a month. AWS only tells you; it never stops anything."
+  type        = number
+  default     = 200
+}
+
+variable "budget_emails" {
+  type = list(string)
+}
+
+data "aws_caller_identity" "me" {}
 
 locals {
   account_id = data.aws_caller_identity.me.account_id
@@ -95,7 +125,7 @@ resource "aws_budgets_budget" "monthly" {
   time_unit    = "MONTHLY"
 
   dynamic "notification" {
-    for_each = [80, 100]
+    for_each = [50, 80, 100]
     content {
       comparison_operator        = "GREATER_THAN"
       threshold                  = notification.value
@@ -103,5 +133,14 @@ resource "aws_budgets_budget" "monthly" {
       notification_type          = "ACTUAL"
       subscriber_email_addresses = var.budget_emails
     }
+  }
+
+  # Warned while there is still time to act, not after the month is over.
+  notification {
+    comparison_operator        = "GREATER_THAN"
+    threshold                  = 100
+    threshold_type             = "PERCENTAGE"
+    notification_type          = "FORECASTED"
+    subscriber_email_addresses = var.budget_emails
   }
 }

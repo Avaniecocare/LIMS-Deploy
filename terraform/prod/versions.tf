@@ -9,7 +9,8 @@ terraform {
 }
 
 locals {
-  tags = { Project = "lims", Environment = "prod", ManagedBy = "terraform" }
+  tags       = { Project = "lims", Environment = "prod", ManagedBy = "terraform" }
+  account_id = data.aws_caller_identity.me.account_id
 }
 
 # Mumbai: everything that serves the labs.

@@ -7,7 +7,6 @@ cluster_admin_role_arns = ["arn:aws:iam::<account>:role/aws-reserved/sso.amazona
 admin_cidrs             = ["<office address>/32"]
 
 oncall_emails = ["oncall@example.com"]
-budget_emails = ["accounts@example.com"]
 
 # Count first, block after a week of reading the sampled requests.
 waf_block = false

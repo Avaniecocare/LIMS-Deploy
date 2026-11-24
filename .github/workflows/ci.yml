@@ -28,7 +28,9 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - name: Shellcheck
-        run: shellcheck -x -P SCRIPTDIR scripts/*.sh scripts/lib/*.sh compose/*.sh docker-compose/*.sh kubernetes/*.sh
+        run: shellcheck -x -P SCRIPTDIR scripts/*.sh scripts/lib/*.sh compose/*.sh docker-compose/*.sh kubernetes/*.sh terraform/server/files/*.sh
+      - name: Settings reach the app unchanged
+        run: scripts/env-check.sh
       - name: Only template and fictional examples under clients/
         run: |
           bad="$(git ls-files clients | grep -vE '^clients/(_template|example-[a-z]+)/' || true)"
@@ -56,11 +58,13 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - name: Format, validate, and plan against mocked AWS
         run: |
-          tf() { docker run --rm -v "$PWD/terraform:/w" -w /w/prod hashicorp/terraform:1.13.5 "$@"; }
-          tf fmt -check -recursive ..
-          tf init -backend=false
-          tf validate
-          tf test
+          for stack in account server prod; do
+            tf() { docker run --rm -v "$PWD/terraform:/w" -w "/w/$stack" hashicorp/terraform:1.13.5 "$@"; }
+            tf fmt -check -recursive ..
+            tf init -backend=false
+            tf validate
+            tf test
+          done
   kubernetes:
     runs-on: ubuntu-latest
     steps:

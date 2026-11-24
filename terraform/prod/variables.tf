@@ -164,15 +164,6 @@ variable "oncall_emails" {
   type        = list(string)
 }
 
-variable "budget_monthly_usd" {
-  type    = number
-  default = 450
-}
-
-variable "budget_emails" {
-  type = list(string)
-}
-
 variable "log_retention_days" {
   description = "CERT-In asks for 180 days."
   type        = number

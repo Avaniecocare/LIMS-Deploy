@@ -1,0 +1,82 @@
+#!/usr/bin/env bash
+# Runs once, as root, when the server is first made. Safe to run again. Log: /var/log/cloud-init-output.log
+set -euxo pipefail
+export DEBIAN_FRONTEND=noninteractive
+timedatectl set-timezone Asia/Kolkata # nightly backups are at 02:00 local time
+
+# ---------------------------------------------------------------- the data disk, at /srv
+device="/dev/disk/by-id/nvme-Amazon_Elastic_Block_Store_${volume_id}"
+for _ in $(seq 1 60); do [ -e "$device" ] && break; sleep 5; done
+[ -e "$device" ]
+# Only an empty disk is formatted: one that already holds data (a replaced server, a snapshot) is kept as it is.
+if [ -z "$(blkid -o value -s TYPE "$device" || true)" ]; then mkfs.ext4 -L lims-data "$device"; fi
+grep -q '^LABEL=lims-data ' /etc/fstab || echo 'LABEL=lims-data /srv ext4 defaults,nofail,x-systemd.device-timeout=60 0 2' >> /etc/fstab
+mountpoint -q /srv || mount /srv
+resize2fs "$device" || true # the disk was made larger than the snapshot it came from
+
+# ---------------------------------------------------------------- Docker, keeping everything on the data disk
+# Docker's own image store, not containerd's: that one keeps images on the system disk, and a replaced server would find
+# its containers without them.
+install -d -m 711 /srv/docker
+install -d /etc/docker /etc/systemd/system/docker.service.d
+cat > /etc/docker/daemon.json <<'JSON'
+{ "data-root": "/srv/docker", "features": { "containerd-snapshotter": false }, "log-driver": "json-file", "log-opts": { "max-size": "10m", "max-file": "3" }, "live-restore": true }
+JSON
+# Never start on an empty folder when the disk is missing.
+printf '[Unit]\nRequiresMountsFor=/srv\nAssertPathIsMountPoint=/srv\n' > /etc/systemd/system/docker.service.d/data-disk.conf
+apt-get -o Acquire::Retries=5 update
+apt-get -o Acquire::Retries=5 install -y --no-install-recommends docker.io docker-compose-v2 age cron git curl unattended-upgrades
+snap list aws-cli >/dev/null 2>&1 || snap install aws-cli --classic
+ln -sf /snap/bin/aws /usr/local/bin/aws # where cron looks
+usermod -aG docker ubuntu
+systemctl enable --now docker cron
+
+# ---------------------------------------------------------------- security updates, restarting after the backup if needed
+cat > /etc/apt/apt.conf.d/52lims <<'CONF'
+Unattended-Upgrade::Automatic-Reboot "true";
+Unattended-Upgrade::Automatic-Reboot-Time "04:00";
+CONF
+
+# ---------------------------------------------------------------- breathing room when a report is being drawn
+if [ ! -f /swapfile ]; then
+  fallocate -l 4G /swapfile && chmod 600 /swapfile && mkswap /swapfile
+  echo '/swapfile none swap sw 0 0' >> /etc/fstab
+fi
+swapon -a
+echo 'vm.swappiness=10' > /etc/sysctl.d/60-lims.conf && sysctl -q --system
+
+# ---------------------------------------------------------------- folders
+install -d -o ubuntu -g ubuntu /srv/lims-proxy /srv/lims-proxy/sites /srv/lims-deploy
+install -d -o ubuntu -g ubuntu -m 700 /srv/lims-clients
+[ -e /srv/lims-proxy/sites/_global.caddy ] || install -o ubuntu -g ubuntu /dev/null /srv/lims-proxy/sites/_global.caddy
+[ -e /opt/lims-deploy ] || ln -s /srv/lims-deploy /opt/lims-deploy
+docker network inspect lims-proxy >/dev/null 2>&1 || docker network create lims-proxy
+
+# ---------------------------------------------------------------- figures for the alarms
+cat > /usr/local/bin/lims-server-metrics <<'METRICS'
+${metrics}METRICS
+chmod 755 /usr/local/bin/lims-server-metrics
+cat > /etc/systemd/system/lims-metrics.service <<'UNIT'
+[Unit]
+After=network-online.target docker.service
+[Service]
+Type=oneshot
+Environment=LIMS_REGION=${region}
+ExecStart=/usr/local/bin/lims-server-metrics
+UNIT
+cat > /etc/systemd/system/lims-metrics.timer <<'UNIT'
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+[Install]
+WantedBy=timers.target
+UNIT
+systemctl daemon-reload
+systemctl enable --now lims-metrics.timer
+
+# ---------------------------------------------------------------- a replaced server: put the nightly backups back
+for dir in /srv/lims-clients/*/; do
+  [ -f "$dir/secrets.env" ] && [ -x /opt/lims-deploy/scripts/install-backup-cron.sh ] || continue
+  su - ubuntu -c "/opt/lims-deploy/scripts/install-backup-cron.sh --client-dir $dir" || echo "WARNING: no nightly backup for $dir"
+done
+echo "LIMS server ready"

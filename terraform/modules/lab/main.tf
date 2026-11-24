@@ -87,6 +87,14 @@ resource "aws_s3_bucket_lifecycle_configuration" "files" {
     noncurrent_version_expiration { noncurrent_days = 365 }
     abort_incomplete_multipart_upload { days_after_initiation = 7 }
   }
+  # The app removes its data exports after a week; this is for any it could not.
+  rule {
+    id     = "data-exports"
+    status = "Enabled"
+    filter { prefix = "exports/" }
+    expiration { days = 10 }
+    noncurrent_version_expiration { noncurrent_days = 1 }
+  }
   depends_on = [aws_s3_bucket_versioning.files]
 }
 
@@ -281,7 +289,9 @@ resource "aws_iam_role_policy" "pods" {
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
-      { Effect = "Allow", Action = ["s3:GetObject", "s3:PutObject"], Resource = "${aws_s3_bucket.files.arn}/*" },
+      { Effect = "Allow", Action = ["s3:GetObject", "s3:PutObject", "s3:AbortMultipartUpload"], Resource = "${aws_s3_bucket.files.arn}/*" },
+      # Copies of everything, made on request and kept a week.
+      { Effect = "Allow", Action = "s3:DeleteObject", Resource = "${aws_s3_bucket.files.arn}/exports/*" },
       { Effect = "Allow", Action = "s3:ListBucket", Resource = aws_s3_bucket.files.arn },
     ]
   })
