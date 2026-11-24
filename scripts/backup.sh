@@ -119,7 +119,7 @@ step="manifest"
   echo "created=$(date -u +%FT%TZ)"
   echo "lims=$LIMS_VERSION"
   echo "lims_ui=$LIMS_UI_VERSION"
-  (cd "$dest" && shasum -a 256 database.dump files.tar.gz config.tar.gz)
+  (cd "$dest" && sha256 database.dump files.tar.gz config.tar.gz)
 } > "$dest/manifest.txt"
 result="$dest"
 

@@ -8,6 +8,9 @@ export DEPLOY_ROOT
 log() { printf '[%s] %s\n' "$(date '+%H:%M:%S')" "$*"; }
 die() { printf 'Error: %s\n' "$*" >&2; exit 1; }
 
+# Linux has sha256sum and macOS has shasum; some have both, and Amazon Linux only the first. Same output and --check.
+sha256() { if command -v sha256sum >/dev/null 2>&1; then sha256sum "$@"; else shasum -a 256 "$@"; fi; }
+
 CLIENT_DIR=""
 EXTRA_ARGS=()
 parse_client_dir() {

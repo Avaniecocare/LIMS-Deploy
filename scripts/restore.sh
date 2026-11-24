@@ -66,7 +66,7 @@ fi
 
 [ -d "$FROM" ] && [ -f "$FROM/database.dump" ] && [ -f "$FROM/files.tar.gz" ] && [ -f "$FROM/manifest.txt" ] || die "--from must point at a backup folder or archive"
 if ! grep -q "^client=$CLIENT_SLUG$" "$FROM/manifest.txt"; then die "That backup belongs to a different company"; fi
-(cd "$FROM" && grep -E '  (database.dump|files.tar.gz|config.tar.gz)$' manifest.txt | shasum -a 256 -c -) || die "Backup failed its checksum"
+(cd "$FROM" && grep -E '  (database.dump|files.tar.gz|config.tar.gz)$' manifest.txt | sha256 -c -) || die "Backup failed its checksum"
 [ "$YES" = true ] || die "This overwrites all data for $CLIENT_SLUG. Re-run with --yes to confirm."
 
 stamp="$(date +%Y%m%d%H%M%S)"
